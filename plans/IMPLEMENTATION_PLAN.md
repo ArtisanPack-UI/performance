@@ -29,9 +29,10 @@ The `artisanpack-ui/performance` package provides comprehensive performance opti
 15. [Artisan Commands](#artisan-commands)
 16. [Middleware](#middleware)
 17. [Blade Directives & Components](#blade-directives--components)
-18. [Integration Points](#integration-points)
-19. [Testing Strategy](#testing-strategy)
-20. [Implementation Phases](#implementation-phases)
+18. [View Customization](#view-customization)
+19. [Integration Points](#integration-points)
+20. [Testing Strategy](#testing-strategy)
+21. [Implementation Phases](#implementation-phases)
 
 ---
 
@@ -2069,6 +2070,297 @@ php artisan perf:suggest-indexes {--generate}
 
 ---
 
+## View Customization
+
+Developers can customize the package's UI in several ways:
+
+### 1. Publishing Views
+
+Publish all views to your application for full customization:
+
+```bash
+php artisan vendor:publish --tag=performance-views
+```
+
+This publishes views to `resources/views/vendor/artisanpack-ui/performance/`:
+
+```
+resources/views/vendor/artisanpack-ui/performance/
+├── components/
+│   ├── lazy-image.blade.php
+│   ├── responsive-image.blade.php
+│   ├── deferred-script.blade.php
+│   ├── critical-css.blade.php
+│   ├── prefetch.blade.php
+│   ├── speculative-rules.blade.php
+│   └── embed.blade.php
+├── dashboard/
+│   ├── index.blade.php
+│   ├── metrics.blade.php
+│   ├── cache.blade.php
+│   ├── images.blade.php
+│   ├── queries.blade.php
+│   └── recommendations.blade.php
+└── livewire/
+    ├── performance-dashboard.blade.php
+    ├── metrics-chart.blade.php
+    ├── cache-manager.blade.php
+    ├── image-optimization-status.blade.php
+    ├── query-analyzer.blade.php
+    └── recommendations-panel.blade.php
+```
+
+### 2. Component Customization via Props
+
+Livewire components accept customization props:
+
+```blade
+{{-- Custom CSS classes --}}
+<livewire:performance-dashboard
+    class="my-custom-dashboard"
+    :card-classes="'shadow-xl rounded-lg'"
+/>
+
+{{-- Custom chart configuration --}}
+<livewire:metrics-chart
+    metric="LCP"
+    :chart-options="['height' => 300, 'colors' => ['#3b82f6']]"
+    :show-legend="true"
+/>
+
+{{-- Custom labels --}}
+<livewire:cache-manager
+    :labels="[
+        'purge' => 'Clear Cache',
+        'warm' => 'Pre-load Cache',
+        'invalidate' => 'Remove Entry',
+    ]"
+/>
+```
+
+### 3. Image Component Customization
+
+Image components support extensive customization:
+
+```blade
+{{-- Custom placeholder styling --}}
+<x-perf-lazy-image
+    src="/images/hero.jpg"
+    alt="Hero image"
+    class="rounded-xl"
+    :placeholder-class="'bg-gradient-to-r from-gray-200 to-gray-300 animate-pulse'"
+/>
+
+{{-- Custom responsive breakpoints --}}
+<x-perf-responsive-image
+    src="/images/product.jpg"
+    alt="Product"
+    :sizes="['sm' => 480, 'md' => 768, 'lg' => 1024, 'xl' => 1440]"
+    :picture-class="'product-image-container'"
+    :img-class="'object-cover w-full'"
+/>
+```
+
+### 4. Slot-Based Content Injection
+
+Dashboard components support slots for custom content:
+
+```blade
+<livewire:performance-dashboard>
+    <x-slot:header>
+        <div class="flex items-center justify-between">
+            <h1 class="text-2xl font-bold">Performance Insights</h1>
+            <x-artisanpack-button wire:click="exportReport">
+                Export Report
+            </x-artisanpack-button>
+        </div>
+    </x-slot:header>
+
+    <x-slot:before-metrics>
+        <x-artisanpack-alert type="info">
+            Metrics are updated every hour. Last update: {{ now()->format('H:i') }}
+        </x-artisanpack-alert>
+    </x-slot:before-metrics>
+
+    <x-slot:after-recommendations>
+        <div class="mt-4 p-4 bg-base-200 rounded-lg">
+            <h4 class="font-semibold">Custom Metrics</h4>
+            {{-- Your custom metrics --}}
+        </div>
+    </x-slot:after-recommendations>
+</livewire:performance-dashboard>
+```
+
+### 5. CSS Variables for Theming
+
+The default views use CSS variables that can be overridden:
+
+```css
+:root {
+    /* Dashboard */
+    --perf-dashboard-bg: theme('colors.base-100');
+    --perf-card-bg: theme('colors.base-200');
+    --perf-card-border: theme('colors.base-300');
+
+    /* Metrics colors */
+    --perf-metric-good: theme('colors.success');
+    --perf-metric-needs-improvement: theme('colors.warning');
+    --perf-metric-poor: theme('colors.error');
+
+    /* Charts */
+    --perf-chart-primary: theme('colors.primary');
+    --perf-chart-secondary: theme('colors.secondary');
+    --perf-chart-grid: theme('colors.base-300');
+
+    /* Loading states */
+    --perf-skeleton-bg: theme('colors.base-300');
+    --perf-skeleton-shimmer: theme('colors.base-100');
+
+    /* Image placeholders */
+    --perf-placeholder-bg: theme('colors.base-200');
+    --perf-placeholder-text: theme('colors.base-content/50');
+}
+```
+
+### 6. Configuration-Based Customization
+
+The `config/artisanpack/performance.php` file includes UI settings:
+
+```php
+'ui' => [
+    'dashboard' => [
+        'theme' => 'auto',                    // auto, light, dark
+        'show_recommendations' => true,
+        'show_quick_actions' => true,
+        'default_date_range' => '7d',         // 24h, 7d, 30d, 90d
+        'charts' => [
+            'type' => 'line',                 // line, bar, area
+            'show_grid' => true,
+            'animate' => true,
+        ],
+        'tabs' => [
+            'overview' => true,
+            'pages' => true,
+            'images' => true,
+            'cache' => true,
+            'queries' => true,
+            'recommendations' => true,
+        ],
+    ],
+    'image_components' => [
+        'default_placeholder' => 'dominant_color',  // dominant_color, blur, skeleton, none
+        'show_loading_indicator' => true,
+        'lazy_threshold' => '200px',
+    ],
+    'custom_css_class' => '',                 // Additional CSS class for all components
+    'use_daisyui' => true,                    // Use daisyUI component classes
+],
+```
+
+### 7. Extending Components
+
+Create custom Livewire components that extend the package's components:
+
+```php
+namespace App\Livewire;
+
+use ArtisanPackUI\Performance\Livewire\PerformanceDashboard as BaseDashboard;
+
+class CustomPerformanceDashboard extends BaseDashboard
+{
+    public function render()
+    {
+        return view('livewire.custom-performance-dashboard', $this->getViewData());
+    }
+
+    // Override methods as needed
+    protected function getTabs(): array
+    {
+        return array_merge(parent::getTabs(), [
+            'custom' => 'Custom Metrics',
+            'seo' => 'SEO Scores',
+        ]);
+    }
+
+    // Add custom metrics
+    public function getCustomMetrics(): array
+    {
+        return [
+            'api_response_time' => $this->getAverageApiResponseTime(),
+            'cache_efficiency' => $this->getCacheEfficiencyScore(),
+        ];
+    }
+}
+
+// Register in AppServiceProvider
+Livewire::component('custom-performance-dashboard', CustomPerformanceDashboard::class);
+```
+
+### 8. Blade Component Customization
+
+Override individual Blade components by creating them in your application:
+
+```php
+// Create: resources/views/components/perf-lazy-image.blade.php
+// This will override the package's lazy-image component
+
+@props([
+    'src',
+    'alt',
+    'width' => null,
+    'height' => null,
+    'placeholder' => 'skeleton',
+])
+
+<div {{ $attributes->merge(['class' => 'relative overflow-hidden']) }}>
+    {{-- Your custom lazy image implementation --}}
+    <img
+        data-src="{{ $src }}"
+        alt="{{ $alt }}"
+        @if($width) width="{{ $width }}" @endif
+        @if($height) height="{{ $height }}" @endif
+        loading="lazy"
+        decoding="async"
+        class="lazy-image transition-opacity duration-300"
+    />
+
+    {{-- Custom placeholder --}}
+    @if($placeholder === 'skeleton')
+        <div class="absolute inset-0 bg-base-300 animate-pulse"></div>
+    @endif
+</div>
+```
+
+### 9. JavaScript Customization
+
+Customize JavaScript behavior via configuration:
+
+```javascript
+// In your app.js or a dedicated script
+document.addEventListener('DOMContentLoaded', function () {
+    // Configure lazy loading behavior
+    window.perfConfig = {
+        lazyLoad: {
+            rootMargin: '200px',
+            threshold: 0.1,
+            onLoad: (img) => {
+                img.classList.add('loaded');
+                // Custom tracking
+                analytics.track('image_loaded', { src: img.src });
+            },
+        },
+        webVitals: {
+            onMetric: (metric) => {
+                // Send to custom analytics
+                customAnalytics.recordMetric(metric.name, metric.value);
+            },
+        },
+    };
+});
+```
+
+---
+
 ## Integration Points
 
 ### Media Library Integration
@@ -2365,13 +2657,20 @@ class MyTest extends TestCase
 - [ ] CacheManager component
 - [ ] QueryAnalyzer component
 - [ ] RecommendationsPanel component
-- [ ] Dashboard customization support
+- [ ] View customization support:
+  - [ ] `vendor:publish --tag=performance-views` command
+  - [ ] Component props (class, card-classes, labels)
+  - [ ] Blade slots (header, before-metrics, after-recommendations)
+  - [ ] CSS variables for theming
+  - [ ] Configuration-based UI settings
+  - [ ] Component extension patterns
 - [ ] Feature tests
 
 **Deliverables**:
 - Real-user monitoring
-- Customizable admin dashboard
+- Fully customizable admin dashboard
 - Actionable recommendations
+- Published view customization
 
 ### Phase 9: Media Library Integration (Week 14)
 
@@ -2394,6 +2693,13 @@ class MyTest extends TestCase
 
 **Tasks**:
 - [ ] Complete documentation
+- [ ] View customization documentation:
+  - [ ] Publishing views guide
+  - [ ] Component props reference
+  - [ ] Slots documentation
+  - [ ] CSS variables reference
+  - [ ] Component extension examples
+  - [ ] JavaScript customization guide
 - [ ] Performance benchmarks
 - [ ] Security audit
 - [ ] Code style compliance
@@ -2402,7 +2708,7 @@ class MyTest extends TestCase
 - [ ] CHANGELOG
 
 **Deliverables**:
-- Complete documentation
+- Complete documentation including view customization
 - Production-ready release
 - Performance benchmarks
 
@@ -2493,3 +2799,4 @@ class MyTest extends TestCase
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 0.1 | Jan 2026 | Jacob Martella | Initial plan draft |
+| 0.2 | Jan 2026 | Jacob Martella | Added View Customization section |
