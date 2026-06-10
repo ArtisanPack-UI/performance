@@ -2,6 +2,11 @@
 
 Description
 
+## Requirements
+
+- PHP 8.2+ for Laravel 10, 11, or 12
+- PHP 8.3+ for Laravel 13
+
 ## Installation
 
 You can install the <name> package by running the following composer command.
