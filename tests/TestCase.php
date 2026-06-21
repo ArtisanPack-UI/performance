@@ -33,7 +33,7 @@ abstract class TestCase extends BaseTestCase
      *
      * @return array<int, class-string> Array of service provider class names.
      */
-    protected function getPerformanceProviders( $app ): array
+    protected function getPackageProviders( $app ): array
     {
         return [
             PerformanceServiceProvider::class,

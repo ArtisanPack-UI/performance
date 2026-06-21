@@ -3,29 +3,28 @@
 /**
  * Performance helper functions.
  *
- * This file contains global helper functions for the package.
- * Add your custom helper functions below.
- *
- * @since      1.0.0
- * @subpackage Performance
+ * Global helpers exposed by the Performance package. Mirrors the public
+ * API on the Performance facade for use in templates and lightweight
+ * application code where dependency injection is impractical.
  *
  * @package    ArtisanPack_UI
+ * @subpackage Performance
+ *
+ * @since      1.0.0
  */
 
-use ArtisanPackUI\Performance\Performance;
+use ArtisanPackUI\Performance\Services\PerformanceService;
 
 if ( ! function_exists( 'performance' ) ) {
 	/**
-	 * Get the Performance instance.
+	 * Resolves the PerformanceService instance from the container.
 	 *
 	 * @since 1.0.0
 	 *
-	 * @return Performance
+	 * @return PerformanceService
 	 */
-	function performance(): Performance
+	function performance(): PerformanceService
 	{
 		return app( 'performance' );
 	}
 }
-
-// Add your custom helper functions below

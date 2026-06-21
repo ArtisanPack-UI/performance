@@ -1,14 +1,16 @@
 <?php
 
 /**
- * Performance Facade.
+ * Performance facade.
  *
- * Provides static access to the Performance class.
- *
- * @since      1.0.0
- * @subpackage Performance
+ * Static accessor for the PerformanceService. Resolves the `performance`
+ * container binding.
  *
  * @package    ArtisanPack_UI
+ * @subpackage Performance
+ *
+ * @since      1.0.0
+ * @see \ArtisanPackUI\Performance\Services\PerformanceService
  */
 
 declare( strict_types=1 );
@@ -18,19 +20,17 @@ namespace ArtisanPackUI\Performance\Facades;
 use Illuminate\Support\Facades\Facade;
 
 /**
- * Performance Facade.
- *
- * @since      1.0.0
- * @see        \ArtisanPackUI\Performance\Performance
- *
- * @subpackage Performance
+ * Performance facade.
  *
  * @package    ArtisanPack_UI
+ * @subpackage Performance
+ *
+ * @since      1.0.0
  */
 class Performance extends Facade
 {
 	/**
-	 * Get the registered name of the component.
+	 * Returns the container binding name.
 	 *
 	 * @since 1.0.0
 	 *
