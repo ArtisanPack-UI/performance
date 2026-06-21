@@ -1,6 +1,6 @@
 {
   "name": "artisanpack-ui/performance",
-  "description": "package name",
+  "description": "Comprehensive performance optimization toolkit for Laravel applications: image optimization, JS/CSS strategies, resource hints, speculative loading, page and fragment caching, query analysis, and real-user performance monitoring.",
   "type": "library",
   "license": "GPL-3.0-or-later",
   "version": "1.0.0",
