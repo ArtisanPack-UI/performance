@@ -281,7 +281,7 @@ return [
 			'enabled'           => true,
 			'threshold_ms'      => 100,
 			'log_channel'       => 'performance',
-			'store_in_database' => true,
+			'store_in_database' => false,
 			'retention_days'    => 30,
 		],
 		'query_cache' => [

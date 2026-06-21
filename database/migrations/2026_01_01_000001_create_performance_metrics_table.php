@@ -37,7 +37,7 @@ return new class extends Migration
 			$table->id();
 			$table->date( 'date' );
 			$table->string( 'route' )->nullable();
-			$table->string( 'url' )->nullable();
+			$table->text( 'url' )->nullable();
 			$table->string( 'metric' );
 			$table->float( 'p50' );
 			$table->float( 'p75' );
