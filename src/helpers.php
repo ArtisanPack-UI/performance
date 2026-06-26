@@ -64,7 +64,13 @@ if ( ! function_exists( 'perfOptimizeImage' ) ) {
 
 if ( ! function_exists( 'perfConvertToWebP' ) ) {
 	/**
-	 * Converts the given image to WebP.
+	 * Converts the given image to WebP, falling back to the source path.
+	 *
+	 * Blade-safe wrapper: when the active driver cannot encode WebP on this
+	 * host, returns the original `$path` unchanged instead of throwing so
+	 * templates degrade to the source image rather than 500ing. Callers that
+	 * want explicit error handling should use the Performance facade
+	 * directly.
 	 *
 	 * @since 1.0.0
 	 *
@@ -75,13 +81,22 @@ if ( ! function_exists( 'perfConvertToWebP' ) ) {
 	 */
 	function perfConvertToWebP( string $path, int $quality = 80 ): string
 	{
+		if ( ! performance()->images()->supportsFormat( 'webp' ) ) {
+			return $path;
+		}
+
 		return performance()->convertToWebP( $path, $quality );
 	}
 }
 
 if ( ! function_exists( 'perfConvertToAvif' ) ) {
 	/**
-	 * Converts the given image to AVIF.
+	 * Converts the given image to AVIF, falling back to the source path.
+	 *
+	 * Blade-safe wrapper: when the active driver cannot encode AVIF on this
+	 * host (common — most PHP/GD builds ship without libavif), returns the
+	 * original `$path` unchanged instead of throwing. Callers that want
+	 * explicit error handling should use the Performance facade directly.
 	 *
 	 * @since 1.0.0
 	 *
@@ -92,6 +107,10 @@ if ( ! function_exists( 'perfConvertToAvif' ) ) {
 	 */
 	function perfConvertToAvif( string $path, int $quality = 70 ): string
 	{
+		if ( ! performance()->images()->supportsFormat( 'avif' ) ) {
+			return $path;
+		}
+
 		return performance()->convertToAvif( $path, $quality );
 	}
 }

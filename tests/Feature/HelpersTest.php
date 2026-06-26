@@ -25,6 +25,41 @@ it( 'reports feature flags through perfFeatureEnabled', function (): void {
 		->and( perfFeatureEnabled( 'nonexistent' ) )->toBeFalse();
 } );
 
+it( 'returns the source path from perfConvertToWebP when the active driver cannot encode WebP', function (): void {
+	// Regression: previously threw RuntimeException on encoder-less hosts,
+	// which would 500 any Blade template using {{ perfConvertToWebP($path) }}.
+	$source = makeTestImage( 'helper-webp-fallback.jpg' );
+
+	// Swap in an ImageService whose converter reports no WebP support.
+	$converter = new class( 'gd' ) extends ArtisanPackUI\Performance\Services\Image\FormatConverter {
+		public function supports( string $format ): bool
+		{
+			return false;
+		}
+	};
+
+	app()->instance( ImageService::class, new ImageService( $converter ) );
+	app()->instance( 'performance', new PerformanceService( app( ImageService::class ) ) );
+
+	expect( perfConvertToWebP( $source ) )->toBe( $source );
+} );
+
+it( 'returns the source path from perfConvertToAvif when the active driver cannot encode AVIF', function (): void {
+	$source = makeTestImage( 'helper-avif-fallback.jpg' );
+
+	$converter = new class( 'gd' ) extends ArtisanPackUI\Performance\Services\Image\FormatConverter {
+		public function supports( string $format ): bool
+		{
+			return false;
+		}
+	};
+
+	app()->instance( ImageService::class, new ImageService( $converter ) );
+	app()->instance( 'performance', new PerformanceService( app( ImageService::class ) ) );
+
+	expect( perfConvertToAvif( $source ) )->toBe( $source );
+} );
+
 it( 'delegates image helpers to the PerformanceService', function (): void {
 	if ( ! function_exists( 'imagewebp' ) ) {
 		$this->markTestSkipped( 'GD WebP support is not available' );
@@ -87,15 +122,18 @@ it( 'invalidates the namespaced key via perfInvalidateCache', function (): void 
 		->and( cache()->store( config( 'cache.default' ) )->get( 'performance:helpers:invalidate' ) )->toBeNull();
 } );
 
-it( 'flushes the entire store via perfFlushCache', function (): void {
-	config( [ 'artisanpack.performance.fragment_cache.driver' => config( 'cache.default' ) ] );
+it( 'flushes the entire store via perfFlushCache when a dedicated store is configured', function (): void {
+	config( [
+		'cache.stores.perf_helpers'                       => [ 'driver' => 'array' ],
+		'artisanpack.performance.fragment_cache.driver'   => 'perf_helpers',
+	] );
 
 	perfRemember( 'helpers:flush:a', 60, fn () => 'a' );
 	perfRemember( 'helpers:flush:b', 60, fn () => 'b' );
 
 	expect( perfFlushCache() )->toBeTrue()
-		->and( cache()->store( config( 'cache.default' ) )->get( 'performance:helpers:flush:a' ) )->toBeNull()
-		->and( cache()->store( config( 'cache.default' ) )->get( 'performance:helpers:flush:b' ) )->toBeNull();
+		->and( cache()->store( 'perf_helpers' )->get( 'performance:helpers:flush:a' ) )->toBeNull()
+		->and( cache()->store( 'perf_helpers' )->get( 'performance:helpers:flush:b' ) )->toBeNull();
 } );
 
 it( 'records metrics without throwing via perfRecordMetric', function (): void {

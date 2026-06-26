@@ -69,15 +69,35 @@ it( 'forgets the namespaced key via invalidateCache', function (): void {
 		->and( cache()->store( config( 'cache.default' ) )->get( 'performance:invalidate-me' ) )->toBeNull();
 } );
 
-it( 'flushes the store via flushCache', function (): void {
-	config( [ 'artisanpack.performance.fragment_cache.driver' => config( 'cache.default' ) ] );
+it( 'flushes the store via flushCache when a dedicated store is configured', function (): void {
+	// Register a dedicated store so the safeguard lets the flush through.
+	config( [
+		'cache.stores.perf_test'                                  => [ 'driver' => 'array' ],
+		'artisanpack.performance.fragment_cache.driver'           => 'perf_test',
+	] );
 
 	$service = app( PerformanceService::class );
 	$service->remember( 'flush:a', 60, fn () => 'a' );
 	$service->remember( 'flush:b', 60, fn () => 'b' );
 
 	expect( $service->flushCache() )->toBeTrue()
-		->and( cache()->store( config( 'cache.default' ) )->get( 'performance:flush:a' ) )->toBeNull();
+		->and( cache()->store( 'perf_test' )->get( 'performance:flush:a' ) )->toBeNull();
+} );
+
+it( 'refuses to flushCache when the fragment driver matches the framework default store', function (): void {
+	// Regression: flush() is store-wide; if the package's fragment store is also
+	// the framework default, flushCache would wipe sessions/locks/app data.
+	config( [ 'artisanpack.performance.fragment_cache.driver' => config( 'cache.default' ) ] );
+
+	expect( fn () => app( PerformanceService::class )->flushCache() )
+		->toThrow( RuntimeException::class, 'Refusing to flush the framework default cache store' );
+} );
+
+it( 'refuses to flushCache when the fragment driver is null', function (): void {
+	config( [ 'artisanpack.performance.fragment_cache.driver' => null ] );
+
+	expect( fn () => app( PerformanceService::class )->flushCache() )
+		->toThrow( RuntimeException::class, 'Refusing to flush the framework default cache store' );
 } );
 
 it( 'delegates image methods to the ImageService', function (): void {

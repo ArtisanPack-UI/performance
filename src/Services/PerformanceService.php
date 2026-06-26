@@ -21,6 +21,7 @@ declare( strict_types=1 );
 namespace ArtisanPackUI\Performance\Services;
 
 use Closure;
+use RuntimeException;
 
 /**
  * Performance service class.
@@ -242,22 +243,38 @@ class PerformanceService
 	}
 
 	/**
-	 * Flushes the entire fragment cache store.
+	 * Flushes the entire fragment cache store wholesale.
 	 *
-	 * Note: this purges the underlying store wholesale, not just the
-	 * `performance:` namespace, because Laravel's cache contract does not
-	 * expose prefix-scoped deletion. Use this on a dedicated store when a
-	 * scoped flush matters.
+	 * Refuses when the fragment-cache driver resolves to the framework's
+	 * default cache store, since Laravel's cache contract exposes only
+	 * store-wide `flush()` (not prefix-scoped deletion) — flushing the
+	 * default store would also wipe sessions, locks, rate-limiter state,
+	 * and unrelated app cache entries. Configure
+	 * `artisanpack.performance.fragment_cache.driver` to a dedicated store
+	 * (a separate redis db, an isolated file disk, etc.) to opt in.
 	 *
 	 * @since 1.0.0
+	 *
+	 * @throws RuntimeException When the fragment store would also wipe the framework default cache.
 	 *
 	 * @return bool True when the store was flushed.
 	 */
 	public function flushCache(): bool
 	{
-		$store = config( 'artisanpack.performance.fragment_cache.driver' );
+		$fragmentStore = config( 'artisanpack.performance.fragment_cache.driver' );
+		$defaultStore  = config( 'cache.default' );
 
-		return (bool) cache()->store( $store )->flush();
+		// A null fragment driver routes through the default store; an explicit
+		// match collapses to the same store. Either way, flushing would nuke
+		// unrelated app cache entries.
+		if ( null === $fragmentStore || $fragmentStore === $defaultStore ) {
+			throw new RuntimeException(
+				'Refusing to flush the framework default cache store. Configure '
+				. 'artisanpack.performance.fragment_cache.driver to a dedicated store first.',
+			);
+		}
+
+		return (bool) cache()->store( $fragmentStore )->flush();
 	}
 
 	/**

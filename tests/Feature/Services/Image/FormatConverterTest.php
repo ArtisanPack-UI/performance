@@ -129,3 +129,30 @@ it( 'defaults the driver to the configured value', function (): void {
 
 	expect( $converter->driver() )->toBe( 'imagick' );
 } );
+
+it( 'reads the driver from config on every call so runtime swaps take effect', function (): void {
+	// Regression: previously the driver was captured in the constructor, so a
+	// singleton-bound converter would silently ignore subsequent config swaps.
+	config( [ 'artisanpack.performance.images.driver' => 'gd' ] );
+	$converter = new FormatConverter();
+	expect( $converter->driver() )->toBe( 'gd' );
+
+	config( [ 'artisanpack.performance.images.driver' => 'imagick' ] );
+	expect( $converter->driver() )->toBe( 'imagick' );
+} );
+
+it( 'pins the driver when constructed with an explicit override', function (): void {
+	$converter = new FormatConverter( 'imagick' );
+
+	config( [ 'artisanpack.performance.images.driver' => 'gd' ] );
+
+	expect( $converter->driver() )->toBe( 'imagick' );
+} );
+
+it( 'reports usesImagick only when the driver is imagick and the extension is loaded', function (): void {
+	$gd      = new FormatConverter( 'gd' );
+	$imagick = new FormatConverter( 'imagick' );
+
+	expect( $gd->usesImagick() )->toBeFalse()
+		->and( $imagick->usesImagick() )->toBe( class_exists( Imagick::class ) );
+} );

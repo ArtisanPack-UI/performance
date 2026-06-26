@@ -121,12 +121,19 @@ class ImageService
 			}
 		}
 
-		ImageOptimized::dispatch( $path, $formats, $sizes );
+		$producedFormats = array_values( array_unique( array_map(
+			static fn ( array $variant ): string => $variant['format'],
+			$variants,
+		) ) );
+
+		if ( ! empty( $variants ) ) {
+			ImageOptimized::dispatch( $path, $producedFormats, $sizes );
+		}
 
 		return [
 			'source'   => $path,
 			'sizes'    => $sizes,
-			'formats'  => $formats,
+			'formats'  => $producedFormats,
 			'variants' => $variants,
 		];
 	}
@@ -174,14 +181,17 @@ class ImageService
 
 		[ $sourceWidth, $sourceHeight ] = $dimensions;
 
-		if ( $sourceWidth <= $width ) {
+		// Skip only when the caller asked for the aspect-preserving default AND
+		// the source is already small enough — never short-circuit when an
+		// explicit height was supplied or we'd silently return wrong dimensions.
+		if ( null === $height && $sourceWidth <= $width ) {
 			return $path;
 		}
 
 		$targetHeight = $height ?? (int) round( ( $width / $sourceWidth ) * $sourceHeight );
 		$destination  = $this->resizedPath( $path, $width );
 
-		if ( 'imagick' === $this->converter->driver() && class_exists( Imagick::class ) ) {
+		if ( $this->converter->usesImagick() ) {
 			$this->resizeWithImagick( $path, $destination, $width, $targetHeight );
 
 			return $destination;
@@ -237,7 +247,7 @@ class ImageService
 			throw new RuntimeException( "Source image is not readable: {$path}" );
 		}
 
-		if ( 'imagick' === $this->converter->driver() && class_exists( Imagick::class ) ) {
+		if ( $this->converter->usesImagick() ) {
 			return $this->dominantColorWithImagick( $path );
 		}
 
@@ -427,17 +437,20 @@ class ImageService
 	 */
 	protected function resizeWithImagick( string $path, string $destination, int $width, int $height ): void
 	{
+		$image = null;
+
 		try {
 			$image = new Imagick( $path );
 			$image->resizeImage( $width, $height, Imagick::FILTER_LANCZOS, 1 );
 			$image->writeImage( $destination );
-			$image->clear();
 		} catch ( ImagickException $exception ) {
 			throw new RuntimeException(
 				"Imagick failed to resize {$path}: " . $exception->getMessage(),
 				0,
 				$exception,
 			);
+		} finally {
+			$image?->clear();
 		}
 	}
 
@@ -526,17 +539,20 @@ class ImageService
 	 */
 	protected function dominantColorWithImagick( string $path ): string
 	{
+		$image = null;
+
 		try {
 			$image = new Imagick( $path );
 			$image->resizeImage( 1, 1, Imagick::FILTER_LANCZOS, 1 );
 			$pixel = $image->getImagePixelColor( 0, 0 )->getColor();
-			$image->clear();
 		} catch ( ImagickException $exception ) {
 			throw new RuntimeException(
 				"Imagick failed to sample {$path}: " . $exception->getMessage(),
 				0,
 				$exception,
 			);
+		} finally {
+			$image?->clear();
 		}
 
 		return sprintf( '#%02x%02x%02x', $pixel['r'], $pixel['g'], $pixel['b'] );
@@ -592,11 +608,15 @@ class ImageService
 		imagecopyresampled( $thumb, $source, 0, 0, 0, 0, 16, 16, imagesx( $source ), imagesy( $source ) );
 
 		ob_start();
-		imagejpeg( $thumb, null, 30 );
-		$bytes = (string) ob_get_clean();
+		$encoded = imagejpeg( $thumb, null, 30 );
+		$bytes   = ob_get_clean();
 
 		imagedestroy( $source );
 		imagedestroy( $thumb );
+
+		if ( false === $encoded || false === $bytes || '' === $bytes ) {
+			throw new RuntimeException( "GD failed to encode blur placeholder for: {$path}" );
+		}
 
 		return 'data:image/jpeg;base64,' . base64_encode( $bytes );
 	}

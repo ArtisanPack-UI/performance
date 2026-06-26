@@ -73,25 +73,30 @@ class FormatConverter
 	public const SUPPORTED_DRIVERS = [ 'gd', 'imagick' ];
 
 	/**
-	 * Active image driver (`gd` or `imagick`).
+	 * Optional driver override pinned at construction time.
+	 *
+	 * Null means "always read from config", which is the production path.
+	 * Tests can pin a specific driver via the constructor without touching
+	 * config state.
 	 *
 	 * @since 1.0.0
 	 *
-	 * @var string
+	 * @var string|null
 	 */
-	protected string $driver;
+	protected ?string $driverOverride;
 
 	/**
 	 * Creates a new converter.
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param string|null $driver Optional driver override; defaults to the
-	 *                            `artisanpack.performance.images.driver` config value.
+	 * @param string|null $driver Optional driver override; when null the driver
+	 *                            is read from `artisanpack.performance.images.driver`
+	 *                            on every call so runtime config changes take effect.
 	 */
 	public function __construct( ?string $driver = null )
 	{
-		$this->driver = $driver ?? (string) config( 'artisanpack.performance.images.driver', 'gd' );
+		$this->driverOverride = $driver;
 	}
 
 	/**
@@ -144,6 +149,7 @@ class FormatConverter
 	public function convert( string $path, string $format, int $quality ): string
 	{
 		$format = strtolower( $format );
+		$driver = $this->driver();
 
 		if ( ! in_array( $format, self::SUPPORTED_FORMATS, true ) ) {
 			throw new RuntimeException( "Unsupported target format: {$format}" );
@@ -154,13 +160,13 @@ class FormatConverter
 		}
 
 		if ( ! $this->supports( $format ) ) {
-			throw new RuntimeException( "Driver '{$this->driver}' cannot encode {$format} on this system" );
+			throw new RuntimeException( "Driver '{$driver}' cannot encode {$format} on this system" );
 		}
 
 		$quality     = max( 0, min( 100, $quality ) );
 		$destination = $this->targetPath( $path, $format );
 
-		if ( 'imagick' === $this->driver ) {
+		if ( $this->usesImagick() ) {
 			$this->convertWithImagick( $path, $destination, $format, $quality );
 		} else {
 			$this->convertWithGd( $path, $destination, $format, $quality );
@@ -181,21 +187,26 @@ class FormatConverter
 	public function supports( string $format ): bool
 	{
 		$format = strtolower( $format );
+		$driver = $this->driver();
 
 		if ( ! in_array( $format, self::SUPPORTED_FORMATS, true ) ) {
 			return false;
 		}
 
-		if ( ! in_array( $this->driver, self::SUPPORTED_DRIVERS, true ) ) {
+		if ( ! in_array( $driver, self::SUPPORTED_DRIVERS, true ) ) {
 			return false;
 		}
 
-		if ( 'imagick' === $this->driver ) {
+		if ( 'imagick' === $driver ) {
 			if ( ! class_exists( Imagick::class ) ) {
 				return false;
 			}
 
-			$formats = ( new Imagick() )->queryFormats( strtoupper( $format ) );
+			try {
+				$formats = ( new Imagick() )->queryFormats( strtoupper( $format ) );
+			} catch ( ImagickException ) {
+				return false;
+			}
 
 			return ! empty( $formats );
 		}
@@ -210,13 +221,33 @@ class FormatConverter
 	/**
 	 * Returns the active driver name.
 	 *
+	 * Reads the override pinned at construction time, falling back to the
+	 * `artisanpack.performance.images.driver` config value so runtime swaps
+	 * take effect on every call.
+	 *
 	 * @since 1.0.0
 	 *
 	 * @return string The driver name (`gd` or `imagick`).
 	 */
 	public function driver(): string
 	{
-		return $this->driver;
+		return $this->driverOverride ?? (string) config( 'artisanpack.performance.images.driver', 'gd' );
+	}
+
+	/**
+	 * Reports whether the active driver should route through Imagick.
+	 *
+	 * Single source of truth for the GD-vs-Imagick decision used across
+	 * `ImageService` and `FormatConverter` so unknown drivers can't silently
+	 * fall through to GD.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return bool True when the active driver is Imagick and the extension is loaded.
+	 */
+	public function usesImagick(): bool
+	{
+		return 'imagick' === $this->driver() && class_exists( Imagick::class );
 	}
 
 	/**
@@ -235,6 +266,8 @@ class FormatConverter
 	 */
 	protected function convertWithImagick( string $path, string $destination, string $format, int $quality ): void
 	{
+		$image = null;
+
 		try {
 			$image = new Imagick( $path );
 			$image->setImageFormat( $format );
@@ -245,13 +278,14 @@ class FormatConverter
 			}
 
 			$image->writeImage( $destination );
-			$image->clear();
 		} catch ( ImagickException $exception ) {
 			throw new RuntimeException(
 				"Imagick failed to convert {$path} to {$format}: " . $exception->getMessage(),
 				0,
 				$exception,
 			);
+		} finally {
+			$image?->clear();
 		}
 	}
 

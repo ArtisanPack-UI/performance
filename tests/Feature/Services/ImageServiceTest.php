@@ -93,8 +93,43 @@ it( 'skips formats the active driver cannot encode rather than failing the pipel
 		'formats' => [ 'avif' ],
 	] );
 
-	expect( $result['variants'] )->toBe( [] );
-	Event::assertDispatched( ImageOptimized::class );
+	// Pipeline tolerates the unsupported driver and returns an empty result.
+	expect( $result['variants'] )->toBe( [] )
+		->and( $result['formats'] )->toBe( [] );
+
+	// Regression: no event dispatch when nothing was produced, so listeners
+	// don't enqueue downstream work for files that don't exist.
+	Event::assertNotDispatched( ImageOptimized::class );
+} );
+
+it( 'dispatches ImageOptimized with the formats actually produced, not requested', function (): void {
+	if ( ! function_exists( 'imagewebp' ) ) {
+		$this->markTestSkipped( 'GD WebP support is not available' );
+	}
+
+	Event::fake();
+
+	$source = makeTestImage( 'produced.jpg', 200, 200, 'jpeg' );
+
+	// Converter that supports WebP but pretends AVIF is unsupported.
+	$converter = new class( 'gd' ) extends FormatConverter {
+		public function supports( string $format ): bool
+		{
+			return 'webp' === strtolower( $format );
+		}
+	};
+
+	$service = new ImageService( $converter );
+
+	$service->optimize( $source, [
+		'sizes'   => [ 100 ],
+		'formats' => [ 'avif', 'webp' ],
+	] );
+
+	Event::assertDispatched( ImageOptimized::class, function ( ImageOptimized $event ): bool {
+		// Regression: previously dispatched the REQUESTED formats; now only the produced ones.
+		return [ 'webp' ] === $event->formats;
+	} );
 } );
 
 it( 'converts a single image to the requested format', function (): void {
@@ -111,11 +146,28 @@ it( 'converts a single image to the requested format', function (): void {
 		->and( $converted )->toEndWith( '.webp' );
 } );
 
-it( 'returns the source path when the resize target is wider than the original', function (): void {
+it( 'returns the source path when the resize target is wider than the original and height is null', function (): void {
 	$source  = makeTestImage( 'small.jpg', 100, 50 );
 	$service = new ImageService( new FormatConverter( 'gd' ) );
 
 	expect( $service->resize( $source, 500 ) )->toBe( $source );
+} );
+
+it( 'honors an explicit height even when the source is smaller than the target width', function (): void {
+	// Regression: resize() used to short-circuit on `sourceWidth <= width`
+	// and silently ignore an explicit $height, returning wrong dimensions.
+	$source  = makeTestImage( 'short.jpg', 200, 100 );
+	$service = new ImageService( new FormatConverter( 'gd' ) );
+
+	$resized = $service->resize( $source, 800, 50 );
+
+	expect( $resized )->not->toBe( $source )
+		->and( file_exists( $resized ) )->toBeTrue();
+
+	[ $width, $height ] = getimagesize( $resized );
+
+	expect( $width )->toBe( 800 )
+		->and( $height )->toBe( 50 );
 } );
 
 it( 'resizes an image to the given width and preserves the aspect ratio', function (): void {
