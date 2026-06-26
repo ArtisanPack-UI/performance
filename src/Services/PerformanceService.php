@@ -21,6 +21,7 @@ declare( strict_types=1 );
 namespace ArtisanPackUI\Performance\Services;
 
 use Closure;
+use RuntimeException;
 
 /**
  * Performance service class.
@@ -34,6 +35,42 @@ use Closure;
  */
 class PerformanceService
 {
+	/**
+	 * Image service used for optimization, format conversion, and color extraction.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @var ImageService
+	 */
+	protected ImageService $images;
+
+	/**
+	 * Creates a new performance service.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param ImageService|null $images Optional image service override (constructs the default when null).
+	 */
+	public function __construct( ?ImageService $images = null )
+	{
+		$this->images = $images ?? new ImageService();
+	}
+
+	/**
+	 * Returns the underlying image service.
+	 *
+	 * Exposes the image pipeline for callers that need to call methods not
+	 * proxied by the facade (resize, generateSrcset, generatePlaceholder).
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return ImageService
+	 */
+	public function images(): ImageService
+	{
+		return $this->images;
+	}
+
 	/**
 	 * Checks whether a Performance feature is enabled.
 	 *
@@ -55,9 +92,9 @@ class PerformanceService
 	/**
 	 * Optimizes an image at the given path.
 	 *
-	 * Stubbed in Phase 1. The image optimization pipeline is implemented in
-	 * Phase 2 and will return the generated derivatives (paths, sizes,
-	 * formats) keyed by variant.
+	 * Delegates to the underlying `ImageService` which generates the
+	 * configured format derivatives (WebP/AVIF) at every configured width,
+	 * fires the `ImageOptimized` event, and returns the produced variants.
 	 *
 	 * @since 1.0.0
 	 *
@@ -68,7 +105,7 @@ class PerformanceService
 	 */
 	public function optimizeImage( string $path, array $options = [] ): array
 	{
-		return [];
+		return $this->images->optimize( $path, $options );
 	}
 
 	/**
@@ -83,7 +120,7 @@ class PerformanceService
 	 */
 	public function convertToWebP( string $path, int $quality = 80 ): string
 	{
-		return $path;
+		return $this->images->convertFormat( $path, 'webp', $quality );
 	}
 
 	/**
@@ -98,7 +135,36 @@ class PerformanceService
 	 */
 	public function convertToAvif( string $path, int $quality = 70 ): string
 	{
-		return $path;
+		return $this->images->convertFormat( $path, 'avif', $quality );
+	}
+
+	/**
+	 * Extracts the dominant color from the given image.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $path Absolute path to the source image.
+	 *
+	 * @return string Hex color string `#rrggbb`.
+	 */
+	public function getDominantColor( string $path ): string
+	{
+		return $this->images->extractDominantColor( $path );
+	}
+
+	/**
+	 * Generates a responsive srcset string for the given image.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string         $path  Absolute path to the source image.
+	 * @param array<int,int> $sizes Widths to include in the srcset.
+	 *
+	 * @return string The srcset attribute value.
+	 */
+	public function getResponsiveSrcset( string $path, array $sizes ): string
+	{
+		return $this->images->generateSrcset( $path, $sizes );
 	}
 
 	/**
@@ -141,6 +207,77 @@ class PerformanceService
 	}
 
 	/**
+	 * Remembers a value indefinitely.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string  $key      The cache key.
+	 * @param Closure $callback Callback whose return value is cached.
+	 *
+	 * @return mixed The cached or freshly computed value.
+	 */
+	public function rememberForever( string $key, Closure $callback ): mixed
+	{
+		$store = config( 'artisanpack.performance.fragment_cache.driver' );
+
+		return cache()->store( $store )->rememberForever( "performance:{$key}", $callback );
+	}
+
+	/**
+	 * Invalidates a single namespaced cache key.
+	 *
+	 * Accepts the bare key (e.g. `products`) and applies the package's
+	 * `performance:` prefix internally.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $key The cache key to forget.
+	 *
+	 * @return bool True when the key was forgotten.
+	 */
+	public function invalidateCache( string $key ): bool
+	{
+		$store = config( 'artisanpack.performance.fragment_cache.driver' );
+
+		return (bool) cache()->store( $store )->forget( "performance:{$key}" );
+	}
+
+	/**
+	 * Flushes the entire fragment cache store wholesale.
+	 *
+	 * Refuses when the fragment-cache driver resolves to the framework's
+	 * default cache store, since Laravel's cache contract exposes only
+	 * store-wide `flush()` (not prefix-scoped deletion) — flushing the
+	 * default store would also wipe sessions, locks, rate-limiter state,
+	 * and unrelated app cache entries. Configure
+	 * `artisanpack.performance.fragment_cache.driver` to a dedicated store
+	 * (a separate redis db, an isolated file disk, etc.) to opt in.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @throws RuntimeException When the fragment store would also wipe the framework default cache.
+	 *
+	 * @return bool True when the store was flushed.
+	 */
+	public function flushCache(): bool
+	{
+		$fragmentStore = config( 'artisanpack.performance.fragment_cache.driver' );
+		$defaultStore  = config( 'cache.default' );
+
+		// A null fragment driver routes through the default store; an explicit
+		// match collapses to the same store. Either way, flushing would nuke
+		// unrelated app cache entries.
+		if ( null === $fragmentStore || $fragmentStore === $defaultStore ) {
+			throw new RuntimeException(
+				'Refusing to flush the framework default cache store. Configure '
+				. 'artisanpack.performance.fragment_cache.driver to a dedicated store first.',
+			);
+		}
+
+		return (bool) cache()->store( $fragmentStore )->flush();
+	}
+
+	/**
 	 * Records a single performance metric sample.
 	 *
 	 * Phase 1 is a no-op; Phase 8 wires this up to the monitoring collector
@@ -157,5 +294,21 @@ class PerformanceService
 	public function recordMetric( string $name, float $value, array $context = [] ): void
 	{
 		// Implemented in Phase 8 (monitoring).
+	}
+
+	/**
+	 * Returns recommended performance actions for the current configuration.
+	 *
+	 * Phase 1 returns an empty list; Phase 8 (monitoring) wires this up to
+	 * the recommendations engine that inspects aggregated metrics, slow
+	 * queries, and feature toggles to surface concrete suggestions.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return array<int, array<string, mixed>> List of recommendation payloads.
+	 */
+	public function getRecommendations(): array
+	{
+		return [];
 	}
 }

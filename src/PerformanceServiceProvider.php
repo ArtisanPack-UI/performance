@@ -20,6 +20,9 @@ declare( strict_types=1 );
 
 namespace ArtisanPackUI\Performance;
 
+use ArtisanPackUI\Performance\Console\Commands\GenerateWebPCommand;
+use ArtisanPackUI\Performance\Services\Image\FormatConverter;
+use ArtisanPackUI\Performance\Services\ImageService;
 use ArtisanPackUI\Performance\Services\PerformanceService;
 use Illuminate\Support\ServiceProvider;
 
@@ -51,8 +54,16 @@ class PerformanceServiceProvider extends ServiceProvider
 			'artisanpack-performance-temp',
 		);
 
+		$this->app->singleton( FormatConverter::class, function ( $app ) {
+			return new FormatConverter();
+		} );
+
+		$this->app->singleton( ImageService::class, function ( $app ) {
+			return new ImageService( $app->make( FormatConverter::class ) );
+		} );
+
 		$this->app->singleton( 'performance', function ( $app ) {
-			return new PerformanceService();
+			return new PerformanceService( $app->make( ImageService::class ) );
 		} );
 
 		$this->app->singleton( PerformanceService::class, function ( $app ) {
@@ -72,7 +83,24 @@ class PerformanceServiceProvider extends ServiceProvider
 		$this->mergeConfiguration();
 		$this->loadMigrationsFrom( __DIR__ . '/../database/migrations' );
 		$this->registerEventListeners();
+		$this->registerCommands();
 		$this->publishConfiguration();
+	}
+
+	/**
+	 * Registers the package's console commands.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return void
+	 */
+	protected function registerCommands(): void
+	{
+		if ( $this->app->runningInConsole() ) {
+			$this->commands( [
+				GenerateWebPCommand::class,
+			] );
+		}
 	}
 
 	/**
