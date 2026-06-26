@@ -21,9 +21,13 @@ declare( strict_types=1 );
 namespace ArtisanPackUI\Performance;
 
 use ArtisanPackUI\Performance\Console\Commands\GenerateWebPCommand;
+use ArtisanPackUI\Performance\Images\DominantColorExtractor;
+use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use ArtisanPackUI\Performance\Services\Image\FormatConverter;
 use ArtisanPackUI\Performance\Services\ImageService;
 use ArtisanPackUI\Performance\Services\PerformanceService;
+use ArtisanPackUI\Performance\View\Components\LazyImage;
+use ArtisanPackUI\Performance\View\Components\ResponsiveImage;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -58,8 +62,19 @@ class PerformanceServiceProvider extends ServiceProvider
 			return new FormatConverter();
 		} );
 
+		$this->app->singleton( DominantColorExtractor::class, function ( $app ) {
+			return new DominantColorExtractor();
+		} );
+
 		$this->app->singleton( ImageService::class, function ( $app ) {
-			return new ImageService( $app->make( FormatConverter::class ) );
+			return new ImageService(
+				$app->make( FormatConverter::class ),
+				$app->make( DominantColorExtractor::class ),
+			);
+		} );
+
+		$this->app->singleton( ResponsiveImageGenerator::class, function ( $app ) {
+			return new ResponsiveImageGenerator( $app->make( ImageService::class ) );
 		} );
 
 		$this->app->singleton( 'performance', function ( $app ) {
@@ -82,9 +97,30 @@ class PerformanceServiceProvider extends ServiceProvider
 	{
 		$this->mergeConfiguration();
 		$this->loadMigrationsFrom( __DIR__ . '/../database/migrations' );
+		$this->loadViewsFrom( __DIR__ . '/../resources/views', 'performance' );
+		$this->loadBladeComponents();
 		$this->registerEventListeners();
 		$this->registerCommands();
 		$this->publishConfiguration();
+	}
+
+	/**
+	 * Registers the package's Blade components under the `perf` prefix.
+	 *
+	 * The components are also published under `resources/views/components`
+	 * so applications can override the templates without forking the
+	 * component classes.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return void
+	 */
+	protected function loadBladeComponents(): void
+	{
+		$this->loadViewComponentsAs( 'perf', [
+			LazyImage::class,
+			ResponsiveImage::class,
+		] );
 	}
 
 	/**

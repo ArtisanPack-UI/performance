@@ -20,6 +20,7 @@ declare( strict_types=1 );
 
 namespace ArtisanPackUI\Performance\Services;
 
+use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use Closure;
 use RuntimeException;
 
@@ -45,15 +46,28 @@ class PerformanceService
 	protected ImageService $images;
 
 	/**
+	 * Responsive image generator (lazily resolved against `$images`).
+	 *
+	 * @since 1.0.0
+	 *
+	 * @var ResponsiveImageGenerator|null
+	 */
+	protected ?ResponsiveImageGenerator $responsiveImages = null;
+
+	/**
 	 * Creates a new performance service.
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param ImageService|null $images Optional image service override (constructs the default when null).
+	 * @param ImageService|null             $images           Optional image service override.
+	 * @param ResponsiveImageGenerator|null $responsiveImages Optional responsive generator override.
 	 */
-	public function __construct( ?ImageService $images = null )
-	{
-		$this->images = $images ?? new ImageService();
+	public function __construct(
+		?ImageService $images = null,
+		?ResponsiveImageGenerator $responsiveImages = null,
+	) {
+		$this->images           = $images ?? new ImageService();
+		$this->responsiveImages = $responsiveImages;
 	}
 
 	/**
@@ -69,6 +83,18 @@ class PerformanceService
 	public function images(): ImageService
 	{
 		return $this->images;
+	}
+
+	/**
+	 * Returns the responsive image generator.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return ResponsiveImageGenerator
+	 */
+	public function responsiveImages(): ResponsiveImageGenerator
+	{
+		return $this->responsiveImages ??= new ResponsiveImageGenerator( $this->images );
 	}
 
 	/**
@@ -164,7 +190,23 @@ class PerformanceService
 	 */
 	public function getResponsiveSrcset( string $path, array $sizes ): string
 	{
-		return $this->images->generateSrcset( $path, $sizes );
+		return $this->responsiveImages()->generateSrcset( $path, $sizes );
+	}
+
+	/**
+	 * Generates every responsive variant (sizes × formats) for the given image.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string                  $path    Absolute path to the source image.
+	 * @param array<int, int>|null    $sizes   Widths to generate.
+	 * @param array<int, string>|null $formats Formats to convert to.
+	 *
+	 * @return array<int, array{width: int, format: string, path: string}>
+	 */
+	public function generateResponsiveVariants( string $path, ?array $sizes = null, ?array $formats = null ): array
+	{
+		return $this->responsiveImages()->generate( $path, $sizes, $formats );
 	}
 
 	/**

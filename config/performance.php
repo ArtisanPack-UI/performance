@@ -78,8 +78,14 @@ return [
 			'auto_detect_lcp' => true,
 		],
 		'dominant_color' => [
-			'enabled'   => true,
-			'algorithm' => 'average',
+			'enabled'     => true,
+			'algorithm'   => 'average',
+			'cache_store' => null,
+			'cache_ttl'   => 0,
+		],
+		'jobs' => [
+			'tries'   => 3,
+			'backoff' => 30,
 		],
 	],
 

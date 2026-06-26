@@ -21,6 +21,7 @@ declare( strict_types=1 );
 namespace ArtisanPackUI\Performance\Services;
 
 use ArtisanPackUI\Performance\Events\ImageOptimized;
+use ArtisanPackUI\Performance\Images\DominantColorExtractor;
 use ArtisanPackUI\Performance\Services\Image\FormatConverter;
 use GdImage;
 use Imagick;
@@ -47,15 +48,28 @@ class ImageService
 	protected FormatConverter $converter;
 
 	/**
+	 * Dominant color extractor.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @var DominantColorExtractor
+	 */
+	protected DominantColorExtractor $dominantColor;
+
+	/**
 	 * Creates a new image service.
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param FormatConverter|null $converter Optional converter override; defaults to a converter using the configured driver.
+	 * @param FormatConverter|null        $converter     Optional converter override; defaults to a converter using the configured driver.
+	 * @param DominantColorExtractor|null $dominantColor Optional dominant color extractor override.
 	 */
-	public function __construct( ?FormatConverter $converter = null )
-	{
-		$this->converter = $converter ?? new FormatConverter();
+	public function __construct(
+		?FormatConverter $converter = null,
+		?DominantColorExtractor $dominantColor = null,
+	) {
+		$this->converter     = $converter ?? new FormatConverter();
+		$this->dominantColor = $dominantColor ?? new DominantColorExtractor();
 	}
 
 	/**
@@ -243,15 +257,19 @@ class ImageService
 	 */
 	public function extractDominantColor( string $path ): string
 	{
-		if ( ! is_file( $path ) || ! is_readable( $path ) ) {
-			throw new RuntimeException( "Source image is not readable: {$path}" );
-		}
+		return $this->dominantColor->extract( $path );
+	}
 
-		if ( $this->converter->usesImagick() ) {
-			return $this->dominantColorWithImagick( $path );
-		}
-
-		return $this->dominantColorWithGd( $path );
+	/**
+	 * Returns the dominant color extractor used by the service.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return DominantColorExtractor
+	 */
+	public function dominantColorExtractor(): DominantColorExtractor
+	{
+		return $this->dominantColor;
 	}
 
 	/**
@@ -524,65 +542,6 @@ class ImageService
 			'webp'        => imagewebp( $image, $destination, 80 ),
 			default       => imagepng( $image, $destination ),
 		};
-	}
-
-	/**
-	 * Extracts the dominant color using Imagick.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $path Absolute path to the source image.
-	 *
-	 * @throws RuntimeException When Imagick fails to read the image.
-	 *
-	 * @return string Hex color string `#rrggbb`.
-	 */
-	protected function dominantColorWithImagick( string $path ): string
-	{
-		$image = null;
-
-		try {
-			$image = new Imagick( $path );
-			$image->resizeImage( 1, 1, Imagick::FILTER_LANCZOS, 1 );
-			$pixel = $image->getImagePixelColor( 0, 0 )->getColor();
-		} catch ( ImagickException $exception ) {
-			throw new RuntimeException(
-				"Imagick failed to sample {$path}: " . $exception->getMessage(),
-				0,
-				$exception,
-			);
-		} finally {
-			$image?->clear();
-		}
-
-		return sprintf( '#%02x%02x%02x', $pixel['r'], $pixel['g'], $pixel['b'] );
-	}
-
-	/**
-	 * Extracts the dominant color using GD.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $path Absolute path to the source image.
-	 *
-	 * @return string Hex color string `#rrggbb`.
-	 */
-	protected function dominantColorWithGd( string $path ): string
-	{
-		$source = $this->createGdImage( $path );
-		$thumb  = imagecreatetruecolor( 1, 1 );
-
-		imagecopyresampled( $thumb, $source, 0, 0, 0, 0, 1, 1, imagesx( $source ), imagesy( $source ) );
-		$rgb = imagecolorat( $thumb, 0, 0 );
-
-		imagedestroy( $source );
-		imagedestroy( $thumb );
-
-		$r = ( $rgb >> 16 ) & 0xFF;
-		$g = ( $rgb >> 8 ) & 0xFF;
-		$b = $rgb & 0xFF;
-
-		return sprintf( '#%02x%02x%02x', $r, $g, $b );
 	}
 
 	/**
