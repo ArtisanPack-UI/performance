@@ -3,6 +3,8 @@
 declare( strict_types=1 );
 
 use ArtisanPackUI\Performance\Facades\Performance;
+use ArtisanPackUI\Performance\Services\Image\FormatConverter;
+use ArtisanPackUI\Performance\Services\ImageService;
 use ArtisanPackUI\Performance\Services\PerformanceService;
 
 it( 'merges package configuration under the artisanpack.performance namespace', function (): void {
@@ -38,6 +40,25 @@ it( 'lets user overrides take precedence over package defaults', function (): vo
 
 it( 'returns false for unknown features rather than throwing', function (): void {
 	expect( Performance::isFeatureEnabled( 'nonexistent_feature' ) )->toBeFalse();
+} );
+
+it( 'binds FormatConverter and ImageService as singletons', function (): void {
+	$converterA = app( FormatConverter::class );
+	$converterB = app( FormatConverter::class );
+	$imageA     = app( ImageService::class );
+	$imageB     = app( ImageService::class );
+
+	expect( $converterA )->toBeInstanceOf( FormatConverter::class )
+		->and( $converterA )->toBe( $converterB )
+		->and( $imageA )->toBeInstanceOf( ImageService::class )
+		->and( $imageA )->toBe( $imageB )
+		->and( $imageA->converter() )->toBe( $converterA );
+} );
+
+it( 'registers the perf:generate-webp console command', function (): void {
+	$registered = array_keys( $this->app['Illuminate\\Contracts\\Console\\Kernel']->all() );
+
+	expect( $registered )->toContain( 'perf:generate-webp' );
 } );
 
 it( 'replaces list-valued config overrides wholesale instead of per-index', function (): void {
