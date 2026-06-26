@@ -123,10 +123,12 @@ return [
 
 	'css' => [
 		'critical' => [
-			'enabled' => true,
-			'width'   => 1300,
-			'height'  => 900,
-			'cache'   => true,
+			'enabled'   => true,
+			'width'     => 1300,
+			'height'    => 900,
+			'cache'     => true,
+			'selectors' => [],
+			'sources'   => [],
 		],
 		'async_loading' => true,
 	],
