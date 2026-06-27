@@ -9,8 +9,6 @@
  * registrations stay decoupled from their final HTML representation and
  * applications can swap in their own strategies via the manager's resolver.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @author     Jacob Martella <me@jacobmartella.com>
  *
@@ -24,30 +22,24 @@ namespace ArtisanPackUI\Performance\JavaScript;
 /**
  * Script loading strategy contract.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @since      1.0.0
  */
 interface ScriptStrategy
 {
-	/**
-	 * Returns the strategy's canonical name (`defer`, `async`, `module`, `inline`).
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return string
-	 */
-	public function name(): string;
+    /**
+     * Returns the strategy's canonical name (`defer`, `async`, `module`, `inline`).
+     *
+     * @since 1.0.0
+     */
+    public function name(): string;
 
-	/**
-	 * Renders the given registration to an HTML `<script>` element.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param  ScriptRegistration $script The script registration to render.
-	 *
-	 * @return string
-	 */
-	public function render( ScriptRegistration $script ): string;
+    /**
+     * Renders the given registration to an HTML `<script>` element.
+     *
+     * @since 1.0.0
+     *
+     * @param  ScriptRegistration  $script  The script registration to render.
+     */
+    public function render( ScriptRegistration $script ): string;
 }

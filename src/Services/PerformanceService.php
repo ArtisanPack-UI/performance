@@ -8,8 +8,6 @@
  * class. Methods are stubbed during Phase 1 scaffolding and filled in by
  * subsequent feature phases (image optimization, caching, monitoring).
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @author     Jacob Martella <me@jacobmartella.com>
  *
@@ -25,6 +23,9 @@ use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use ArtisanPackUI\Performance\JavaScript\ScriptManager;
 use ArtisanPackUI\Performance\JavaScript\ScriptRegistration;
 use ArtisanPackUI\Performance\Output\ResourceHintInjector;
+use ArtisanPackUI\Performance\Speculative\PrefetchManager;
+use ArtisanPackUI\Performance\Speculative\PrerenderManager;
+use ArtisanPackUI\Performance\Speculative\SpeculativeRulesGenerator;
 use Closure;
 use RuntimeException;
 
@@ -33,427 +34,548 @@ use RuntimeException;
  *
  * Resolved by the `performance` container binding and the Performance facade.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @since      1.0.0
  */
 class PerformanceService
 {
-	/**
-	 * Image service used for optimization, format conversion, and color extraction.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @var ImageService
-	 */
-	protected ImageService $images;
+    /**
+     * Image service used for optimization, format conversion, and color extraction.
+     *
+     * @since 1.0.0
+     */
+    protected ImageService $images;
 
-	/**
-	 * Responsive image generator (lazily resolved against `$images`).
-	 *
-	 * @since 1.0.0
-	 *
-	 * @var ResponsiveImageGenerator|null
-	 */
-	protected ?ResponsiveImageGenerator $responsiveImages = null;
+    /**
+     * Responsive image generator (lazily resolved against `$images`).
+     *
+     * @since 1.0.0
+     */
+    protected ?ResponsiveImageGenerator $responsiveImages = null;
 
-	/**
-	 * Script manager service (lazily instantiated when first accessed).
-	 *
-	 * Defaulted to `null` so subclasses that touch the property before
-	 * `parent::__construct()` runs don't trip the typed-property-uninitialized
-	 * AccessError — matches the convention used by `$responsiveImages` above.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @var ScriptManager|null
-	 */
-	protected ?ScriptManager $scripts = null;
+    /**
+     * Script manager service (lazily instantiated when first accessed).
+     *
+     * Defaulted to `null` so subclasses that touch the property before
+     * `parent::__construct()` runs don't trip the typed-property-uninitialized
+     * AccessError — matches the convention used by `$responsiveImages` above.
+     *
+     * @since 1.0.0
+     */
+    protected ?ScriptManager $scripts = null;
 
-	/**
-	 * Critical CSS extractor (lazily instantiated when first accessed).
-	 *
-	 * Defaulted to `null` for the same reason as `$scripts`.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @var CriticalCssExtractor|null
-	 */
-	protected ?CriticalCssExtractor $criticalCss = null;
+    /**
+     * Critical CSS extractor (lazily instantiated when first accessed).
+     *
+     * Defaulted to `null` for the same reason as `$scripts`.
+     *
+     * @since 1.0.0
+     */
+    protected ?CriticalCssExtractor $criticalCss = null;
 
-	/**
-	 * Resource hint injector (lazily instantiated when first accessed).
-	 *
-	 * @since 1.0.0
-	 *
-	 * @var ResourceHintInjector|null
-	 */
-	protected ?ResourceHintInjector $resourceHints = null;
+    /**
+     * Resource hint injector (lazily instantiated when first accessed).
+     *
+     * @since 1.0.0
+     */
+    protected ?ResourceHintInjector $resourceHints = null;
 
-	/**
-	 * Creates a new performance service.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param ImageService|null             $images           Optional image service override.
-	 * @param ResponsiveImageGenerator|null $responsiveImages Optional responsive generator override.
-	 * @param ScriptManager|null            $scripts          Optional script manager override.
-	 * @param CriticalCssExtractor|null     $criticalCss      Optional critical CSS extractor override.
-	 * @param ResourceHintInjector|null     $resourceHints    Optional resource hint injector override.
-	 */
-	public function __construct(
-		?ImageService $images = null,
-		?ResponsiveImageGenerator $responsiveImages = null,
-		?ScriptManager $scripts = null,
-		?CriticalCssExtractor $criticalCss = null,
-		?ResourceHintInjector $resourceHints = null,
-	) {
-		$this->images           = $images ?? new ImageService();
-		$this->responsiveImages = $responsiveImages;
-		$this->scripts          = $scripts;
-		$this->criticalCss      = $criticalCss;
-		$this->resourceHints    = $resourceHints;
-	}
+    /**
+     * Speculative rules generator (lazily instantiated when first accessed).
+     *
+     * @since 1.0.0
+     */
+    protected ?SpeculativeRulesGenerator $speculativeRules = null;
 
-	/**
-	 * Returns the underlying image service.
-	 *
-	 * Exposes the image pipeline for callers that need to call methods not
-	 * proxied by the facade (resize, generateSrcset, generatePlaceholder).
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return ImageService
-	 */
-	public function images(): ImageService
-	{
-		return $this->images;
-	}
+    /**
+     * Prefetch URL manager (lazily instantiated when first accessed).
+     *
+     * @since 1.0.0
+     */
+    protected ?PrefetchManager $prefetchManager = null;
 
-	/**
-	 * Returns the responsive image generator.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return ResponsiveImageGenerator
-	 */
-	public function responsiveImages(): ResponsiveImageGenerator
-	{
-		return $this->responsiveImages ??= new ResponsiveImageGenerator( $this->images );
-	}
+    /**
+     * Prerender URL manager (lazily instantiated when first accessed).
+     *
+     * @since 1.0.0
+     */
+    protected ?PrerenderManager $prerenderManager = null;
 
-	/**
-	 * Checks whether a Performance feature is enabled.
-	 *
-	 * Reads the `artisanpack.performance.features.<name>` config key. Returns
-	 * `false` when the feature flag is missing so unknown features always
-	 * behave as disabled.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $feature The feature key (e.g. `image_optimization`).
-	 *
-	 * @return bool True when the feature is enabled, false otherwise.
-	 */
-	public function isFeatureEnabled( string $feature ): bool
-	{
-		return (bool) config( "artisanpack.performance.features.{$feature}", false );
-	}
+    /**
+     * Embed optimizer (lazily instantiated when first accessed).
+     *
+     * @since 1.0.0
+     */
+    protected ?EmbedOptimizer $embedOptimizer = null;
 
-	/**
-	 * Optimizes an image at the given path.
-	 *
-	 * Delegates to the underlying `ImageService` which generates the
-	 * configured format derivatives (WebP/AVIF) at every configured width,
-	 * fires the `ImageOptimized` event, and returns the produced variants.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string               $path    Absolute path to the source image.
-	 * @param array<string, mixed> $options Optional optimization overrides.
-	 *
-	 * @return array<string, mixed> The optimization result payload.
-	 */
-	public function optimizeImage( string $path, array $options = [] ): array
-	{
-		return $this->images->optimize( $path, $options );
-	}
+    /**
+     * Creates a new performance service.
+     *
+     * @since 1.0.0
+     *
+     * @param  ImageService|null  $images  Optional image service override.
+     * @param  ResponsiveImageGenerator|null  $responsiveImages  Optional responsive generator override.
+     * @param  ScriptManager|null  $scripts  Optional script manager override.
+     * @param  CriticalCssExtractor|null  $criticalCss  Optional critical CSS extractor override.
+     * @param  ResourceHintInjector|null  $resourceHints  Optional resource hint injector override.
+     * @param  SpeculativeRulesGenerator|null  $speculativeRules  Optional rules generator override.
+     * @param  PrefetchManager|null  $prefetchManager  Optional prefetch manager override.
+     * @param  PrerenderManager|null  $prerenderManager  Optional prerender manager override.
+     * @param  EmbedOptimizer|null  $embedOptimizer  Optional embed optimizer override.
+     */
+    public function __construct(
+        ?ImageService $images = null,
+        ?ResponsiveImageGenerator $responsiveImages = null,
+        ?ScriptManager $scripts = null,
+        ?CriticalCssExtractor $criticalCss = null,
+        ?ResourceHintInjector $resourceHints = null,
+        ?SpeculativeRulesGenerator $speculativeRules = null,
+        ?PrefetchManager $prefetchManager = null,
+        ?PrerenderManager $prerenderManager = null,
+        ?EmbedOptimizer $embedOptimizer = null,
+    ) {
+        $this->images           = $images ?? new ImageService;
+        $this->responsiveImages = $responsiveImages;
+        $this->scripts          = $scripts;
+        $this->criticalCss      = $criticalCss;
+        $this->resourceHints    = $resourceHints;
+        $this->speculativeRules = $speculativeRules;
+        $this->prefetchManager  = $prefetchManager;
+        $this->prerenderManager = $prerenderManager;
+        $this->embedOptimizer   = $embedOptimizer;
+    }
 
-	/**
-	 * Converts the given image to WebP.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $path    Absolute path to the source image.
-	 * @param int    $quality Output quality, 0-100.
-	 *
-	 * @return string Path to the generated WebP file.
-	 */
-	public function convertToWebP( string $path, int $quality = 80 ): string
-	{
-		return $this->images->convertFormat( $path, 'webp', $quality );
-	}
+    /**
+     * Returns the underlying image service.
+     *
+     * Exposes the image pipeline for callers that need to call methods not
+     * proxied by the facade (resize, generateSrcset, generatePlaceholder).
+     *
+     * @since 1.0.0
+     */
+    public function images(): ImageService
+    {
+        return $this->images;
+    }
 
-	/**
-	 * Converts the given image to AVIF.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $path    Absolute path to the source image.
-	 * @param int    $quality Output quality, 0-100.
-	 *
-	 * @return string Path to the generated AVIF file.
-	 */
-	public function convertToAvif( string $path, int $quality = 70 ): string
-	{
-		return $this->images->convertFormat( $path, 'avif', $quality );
-	}
+    /**
+     * Returns the responsive image generator.
+     *
+     * @since 1.0.0
+     */
+    public function responsiveImages(): ResponsiveImageGenerator
+    {
+        return $this->responsiveImages ??= new ResponsiveImageGenerator( $this->images );
+    }
 
-	/**
-	 * Extracts the dominant color from the given image.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $path Absolute path to the source image.
-	 *
-	 * @return string Hex color string `#rrggbb`.
-	 */
-	public function getDominantColor( string $path ): string
-	{
-		return $this->images->extractDominantColor( $path );
-	}
+    /**
+     * Checks whether a Performance feature is enabled.
+     *
+     * Reads the `artisanpack.performance.features.<name>` config key. Returns
+     * `false` when the feature flag is missing so unknown features always
+     * behave as disabled.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $feature  The feature key (e.g. `image_optimization`).
+     *
+     * @return bool True when the feature is enabled, false otherwise.
+     */
+    public function isFeatureEnabled( string $feature ): bool
+    {
+        return (bool) config( "artisanpack.performance.features.{$feature}", false );
+    }
 
-	/**
-	 * Generates a responsive srcset string for the given image.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string         $path  Absolute path to the source image.
-	 * @param array<int,int> $sizes Widths to include in the srcset.
-	 *
-	 * @return string The srcset attribute value.
-	 */
-	public function getResponsiveSrcset( string $path, array $sizes ): string
-	{
-		return $this->responsiveImages()->generateSrcset( $path, $sizes );
-	}
+    /**
+     * Optimizes an image at the given path.
+     *
+     * Delegates to the underlying `ImageService` which generates the
+     * configured format derivatives (WebP/AVIF) at every configured width,
+     * fires the `ImageOptimized` event, and returns the produced variants.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $path  Absolute path to the source image.
+     * @param  array<string, mixed>  $options  Optional optimization overrides.
+     *
+     * @return array<string, mixed> The optimization result payload.
+     */
+    public function optimizeImage( string $path, array $options = [] ): array
+    {
+        return $this->images->optimize( $path, $options );
+    }
 
-	/**
-	 * Generates every responsive variant (sizes × formats) for the given image.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string                  $path    Absolute path to the source image.
-	 * @param array<int, int>|null    $sizes   Widths to generate.
-	 * @param array<int, string>|null $formats Formats to convert to.
-	 *
-	 * @return array<int, array{width: int, format: string, path: string}>
-	 */
-	public function generateResponsiveVariants( string $path, ?array $sizes = null, ?array $formats = null ): array
-	{
-		return $this->responsiveImages()->generate( $path, $sizes, $formats );
-	}
+    /**
+     * Converts the given image to WebP.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $path  Absolute path to the source image.
+     * @param  int  $quality  Output quality, 0-100.
+     *
+     * @return string Path to the generated WebP file.
+     */
+    public function convertToWebP( string $path, int $quality = 80 ): string
+    {
+        return $this->images->convertFormat( $path, 'webp', $quality );
+    }
 
-	/**
-	 * Returns the script manager, instantiating one on first access.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return ScriptManager
-	 */
-	public function scripts(): ScriptManager
-	{
-		return $this->scripts ??= new ScriptManager();
-	}
+    /**
+     * Converts the given image to AVIF.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $path  Absolute path to the source image.
+     * @param  int  $quality  Output quality, 0-100.
+     *
+     * @return string Path to the generated AVIF file.
+     */
+    public function convertToAvif( string $path, int $quality = 70 ): string
+    {
+        return $this->images->convertFormat( $path, 'avif', $quality );
+    }
 
-	/**
-	 * Returns the critical CSS extractor, instantiating one on first access.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return CriticalCssExtractor
-	 */
-	public function criticalCss(): CriticalCssExtractor
-	{
-		return $this->criticalCss ??= new CriticalCssExtractor();
-	}
+    /**
+     * Extracts the dominant color from the given image.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $path  Absolute path to the source image.
+     *
+     * @return string Hex color string `#rrggbb`.
+     */
+    public function getDominantColor( string $path ): string
+    {
+        return $this->images->extractDominantColor( $path );
+    }
 
-	/**
-	 * Returns the resource hint injector, instantiating one on first access.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return ResourceHintInjector
-	 */
-	public function resourceHints(): ResourceHintInjector
-	{
-		return $this->resourceHints ??= new ResourceHintInjector();
-	}
+    /**
+     * Generates a responsive srcset string for the given image.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $path  Absolute path to the source image.
+     * @param  array<int,int>  $sizes  Widths to include in the srcset.
+     *
+     * @return string The srcset attribute value.
+     */
+    public function getResponsiveSrcset( string $path, array $sizes ): string
+    {
+        return $this->responsiveImages()->generateSrcset( $path, $sizes );
+    }
 
-	/**
-	 * Registers a script with the script manager and returns its registration.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param  string $src Script source URL or path.
-	 *
-	 * @return ScriptRegistration
-	 */
-	public function script( string $src ): ScriptRegistration
-	{
-		return $this->scripts()->register( $src );
-	}
+    /**
+     * Generates every responsive variant (sizes × formats) for the given image.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $path  Absolute path to the source image.
+     * @param  array<int, int>|null  $sizes  Widths to generate.
+     * @param  array<int, string>|null  $formats  Formats to convert to.
+     *
+     * @return array<int, array{width: int, format: string, path: string}>
+     */
+    public function generateResponsiveVariants( string $path, ?array $sizes = null, ?array $formats = null ): array
+    {
+        return $this->responsiveImages()->generate( $path, $sizes, $formats );
+    }
 
-	/**
-	 * Returns every registered script in priority order.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return array<int, ScriptRegistration>
-	 */
-	public function getScripts(): array
-	{
-		return $this->scripts()->all();
-	}
+    /**
+     * Returns the script manager, instantiating one on first access.
+     *
+     * @since 1.0.0
+     */
+    public function scripts(): ScriptManager
+    {
+        return $this->scripts ??= new ScriptManager;
+    }
 
-	/**
-	 * Renders every registered script to an HTML block.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return string
-	 */
-	public function renderScripts(): string
-	{
-		return $this->scripts()->render();
-	}
+    /**
+     * Returns the critical CSS extractor, instantiating one on first access.
+     *
+     * @since 1.0.0
+     */
+    public function criticalCss(): CriticalCssExtractor
+    {
+        return $this->criticalCss ??= new CriticalCssExtractor;
+    }
 
-	/**
-	 * Remembers a value in cache for the given TTL.
-	 *
-	 * Routes through the store named by `artisanpack.performance.fragment_cache.driver`
-	 * (falling back to the framework default when unset) and namespaces every
-	 * key under the `performance:` prefix.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string  $key      The cache key.
-	 * @param int     $ttl      Time-to-live in seconds.
-	 * @param Closure $callback Callback whose return value is cached.
-	 *
-	 * @return mixed The cached or freshly computed value.
-	 */
-	public function remember( string $key, int $ttl, Closure $callback ): mixed
-	{
-		$store = config( 'artisanpack.performance.fragment_cache.driver' );
+    /**
+     * Returns the resource hint injector, instantiating one on first access.
+     *
+     * @since 1.0.0
+     */
+    public function resourceHints(): ResourceHintInjector
+    {
+        return $this->resourceHints ??= new ResourceHintInjector;
+    }
 
-		return cache()->store( $store )->remember( "performance:{$key}", $ttl, $callback );
-	}
+    /**
+     * Returns the speculative rules generator, instantiating one on first access.
+     *
+     * @since 1.0.0
+     */
+    public function speculativeRules(): SpeculativeRulesGenerator
+    {
+        return $this->speculativeRules ??= new SpeculativeRulesGenerator;
+    }
 
-	/**
-	 * Remembers a value indefinitely.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string  $key      The cache key.
-	 * @param Closure $callback Callback whose return value is cached.
-	 *
-	 * @return mixed The cached or freshly computed value.
-	 */
-	public function rememberForever( string $key, Closure $callback ): mixed
-	{
-		$store = config( 'artisanpack.performance.fragment_cache.driver' );
+    /**
+     * Returns the prefetch URL manager, instantiating one on first access.
+     *
+     * @since 1.0.0
+     */
+    public function prefetchManager(): PrefetchManager
+    {
+        return $this->prefetchManager ??= new PrefetchManager;
+    }
 
-		return cache()->store( $store )->rememberForever( "performance:{$key}", $callback );
-	}
+    /**
+     * Returns the prerender URL manager, instantiating one on first access.
+     *
+     * @since 1.0.0
+     */
+    public function prerenderManager(): PrerenderManager
+    {
+        return $this->prerenderManager ??= new PrerenderManager;
+    }
 
-	/**
-	 * Invalidates a single namespaced cache key.
-	 *
-	 * Accepts the bare key (e.g. `products`) and applies the package's
-	 * `performance:` prefix internally.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $key The cache key to forget.
-	 *
-	 * @return bool True when the key was forgotten.
-	 */
-	public function invalidateCache( string $key ): bool
-	{
-		$store = config( 'artisanpack.performance.fragment_cache.driver' );
+    /**
+     * Returns the embed optimizer, instantiating one on first access.
+     *
+     * @since 1.0.0
+     */
+    public function embedOptimizer(): EmbedOptimizer
+    {
+        return $this->embedOptimizer ??= new EmbedOptimizer;
+    }
 
-		return (bool) cache()->store( $store )->forget( "performance:{$key}" );
-	}
+    /**
+     * Registers URLs for prefetching at the configured eagerness.
+     *
+     * Proxy for `prefetchManager()->register()`; returns the service so
+     * callers can chain further fluent calls (e.g. `prerender(...)`).
+     *
+     * @since 1.0.0
+     *
+     * @param  array<int, string>|string  $urls  URL or list of URLs.
+     * @param  string  $priority  Priority level (`high`, `medium`, `low`).
+     *
+     * @return $this
+     */
+    public function prefetch( string|array $urls, string $priority = PrefetchManager::DEFAULT_PRIORITY ): self
+    {
+        $this->prefetchManager()->register( $urls, $priority );
 
-	/**
-	 * Flushes the entire fragment cache store wholesale.
-	 *
-	 * Refuses when the fragment-cache driver resolves to the framework's
-	 * default cache store, since Laravel's cache contract exposes only
-	 * store-wide `flush()` (not prefix-scoped deletion) — flushing the
-	 * default store would also wipe sessions, locks, rate-limiter state,
-	 * and unrelated app cache entries. Configure
-	 * `artisanpack.performance.fragment_cache.driver` to a dedicated store
-	 * (a separate redis db, an isolated file disk, etc.) to opt in.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @throws RuntimeException When the fragment store would also wipe the framework default cache.
-	 *
-	 * @return bool True when the store was flushed.
-	 */
-	public function flushCache(): bool
-	{
-		$fragmentStore = config( 'artisanpack.performance.fragment_cache.driver' );
-		$defaultStore  = config( 'cache.default' );
+        return $this;
+    }
 
-		// A null fragment driver routes through the default store; an explicit
-		// match collapses to the same store. Either way, flushing would nuke
-		// unrelated app cache entries.
-		if ( null === $fragmentStore || $fragmentStore === $defaultStore ) {
-			throw new RuntimeException(
-				'Refusing to flush the framework default cache store. Configure '
-				. 'artisanpack.performance.fragment_cache.driver to a dedicated store first.',
-			);
-		}
+    /**
+     * Registers URLs for prerendering at the configured eagerness.
+     *
+     * @since 1.0.0
+     *
+     * @param  array<int, string>|string  $urls  URL or list of URLs.
+     * @param  string  $priority  Priority level (`high`, `medium`, `low`).
+     *
+     * @return $this
+     */
+    public function prerender( string|array $urls, string $priority = PrerenderManager::DEFAULT_PRIORITY ): self
+    {
+        $this->prerenderManager()->register( $urls, $priority );
 
-		return (bool) cache()->store( $fragmentStore )->flush();
-	}
+        return $this;
+    }
 
-	/**
-	 * Records a single performance metric sample.
-	 *
-	 * Phase 1 is a no-op; Phase 8 wires this up to the monitoring collector
-	 * which aggregates samples into the `performance_metrics` table.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string               $name    The metric name (e.g. `LCP`).
-	 * @param float                $value   The metric value.
-	 * @param array<string, mixed> $context Optional contextual data.
-	 *
-	 * @return void
-	 */
-	public function recordMetric( string $name, float $value, array $context = [] ): void
-	{
-		// Implemented in Phase 8 (monitoring).
-	}
+    /**
+     * Removes prefetched URLs matching the given pattern.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $pattern  URL or glob pattern.
+     *
+     * @return $this
+     */
+    public function clearPrefetch( string $pattern ): self
+    {
+        $this->prefetchManager()->clear( $pattern );
 
-	/**
-	 * Returns recommended performance actions for the current configuration.
-	 *
-	 * Phase 1 returns an empty list; Phase 8 (monitoring) wires this up to
-	 * the recommendations engine that inspects aggregated metrics, slow
-	 * queries, and feature toggles to surface concrete suggestions.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return array<int, array<string, mixed>> List of recommendation payloads.
-	 */
-	public function getRecommendations(): array
-	{
-		return [];
-	}
+        return $this;
+    }
+
+    /**
+     * Removes prerendered URLs matching the given pattern.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $pattern  URL or glob pattern.
+     *
+     * @return $this
+     */
+    public function clearPrerender( string $pattern ): self
+    {
+        $this->prerenderManager()->clear( $pattern );
+
+        return $this;
+    }
+
+    /**
+     * Registers a script with the script manager and returns its registration.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $src  Script source URL or path.
+     */
+    public function script( string $src ): ScriptRegistration
+    {
+        return $this->scripts()->register( $src );
+    }
+
+    /**
+     * Returns every registered script in priority order.
+     *
+     * @since 1.0.0
+     *
+     * @return array<int, ScriptRegistration>
+     */
+    public function getScripts(): array
+    {
+        return $this->scripts()->all();
+    }
+
+    /**
+     * Renders every registered script to an HTML block.
+     *
+     * @since 1.0.0
+     */
+    public function renderScripts(): string
+    {
+        return $this->scripts()->render();
+    }
+
+    /**
+     * Remembers a value in cache for the given TTL.
+     *
+     * Routes through the store named by `artisanpack.performance.fragment_cache.driver`
+     * (falling back to the framework default when unset) and namespaces every
+     * key under the `performance:` prefix.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $key  The cache key.
+     * @param  int  $ttl  Time-to-live in seconds.
+     * @param  Closure  $callback  Callback whose return value is cached.
+     *
+     * @return mixed The cached or freshly computed value.
+     */
+    public function remember( string $key, int $ttl, Closure $callback ): mixed
+    {
+        $store = config( 'artisanpack.performance.fragment_cache.driver' );
+
+        return cache()->store( $store )->remember( "performance:{$key}", $ttl, $callback );
+    }
+
+    /**
+     * Remembers a value indefinitely.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $key  The cache key.
+     * @param  Closure  $callback  Callback whose return value is cached.
+     *
+     * @return mixed The cached or freshly computed value.
+     */
+    public function rememberForever( string $key, Closure $callback ): mixed
+    {
+        $store = config( 'artisanpack.performance.fragment_cache.driver' );
+
+        return cache()->store( $store )->rememberForever( "performance:{$key}", $callback );
+    }
+
+    /**
+     * Invalidates a single namespaced cache key.
+     *
+     * Accepts the bare key (e.g. `products`) and applies the package's
+     * `performance:` prefix internally.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $key  The cache key to forget.
+     *
+     * @return bool True when the key was forgotten.
+     */
+    public function invalidateCache( string $key ): bool
+    {
+        $store = config( 'artisanpack.performance.fragment_cache.driver' );
+
+        return (bool) cache()->store( $store )->forget( "performance:{$key}" );
+    }
+
+    /**
+     * Flushes the entire fragment cache store wholesale.
+     *
+     * Refuses when the fragment-cache driver resolves to the framework's
+     * default cache store, since Laravel's cache contract exposes only
+     * store-wide `flush()` (not prefix-scoped deletion) — flushing the
+     * default store would also wipe sessions, locks, rate-limiter state,
+     * and unrelated app cache entries. Configure
+     * `artisanpack.performance.fragment_cache.driver` to a dedicated store
+     * (a separate redis db, an isolated file disk, etc.) to opt in.
+     *
+     * @since 1.0.0
+     *
+     * @throws RuntimeException When the fragment store would also wipe the framework default cache.
+     *
+     * @return bool True when the store was flushed.
+     */
+    public function flushCache(): bool
+    {
+        $fragmentStore = config( 'artisanpack.performance.fragment_cache.driver' );
+        $defaultStore  = config( 'cache.default' );
+
+        // A null fragment driver routes through the default store; an explicit
+        // match collapses to the same store. Either way, flushing would nuke
+        // unrelated app cache entries.
+        if ( null === $fragmentStore || $fragmentStore === $defaultStore ) {
+            throw new RuntimeException(
+                'Refusing to flush the framework default cache store. Configure '
+                . 'artisanpack.performance.fragment_cache.driver to a dedicated store first.',
+            );
+        }
+
+        return (bool) cache()->store( $fragmentStore )->flush();
+    }
+
+    /**
+     * Records a single performance metric sample.
+     *
+     * Phase 1 is a no-op; Phase 8 wires this up to the monitoring collector
+     * which aggregates samples into the `performance_metrics` table.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $name  The metric name (e.g. `LCP`).
+     * @param  float  $value  The metric value.
+     * @param  array<string, mixed>  $context  Optional contextual data.
+     */
+    public function recordMetric( string $name, float $value, array $context = []): void
+    {
+        // Implemented in Phase 8 (monitoring).
+    }
+
+    /**
+     * Returns recommended performance actions for the current configuration.
+     *
+     * Phase 1 returns an empty list; Phase 8 (monitoring) wires this up to
+     * the recommendations engine that inspects aggregated metrics, slow
+     * queries, and feature toggles to surface concrete suggestions.
+     *
+     * @since 1.0.0
+     *
+     * @return array<int, array<string, mixed>> List of recommendation payloads.
+     */
+    public function getRecommendations(): array
+    {
+        return [];
+    }
 }

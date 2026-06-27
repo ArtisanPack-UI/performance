@@ -5,8 +5,6 @@
  *
  * Dispatched after the cache warmer completes a warming pass.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @author     Jacob Martella <me@jacobmartella.com>
  *
@@ -23,27 +21,25 @@ use Illuminate\Queue\SerializesModels;
 /**
  * Cache warmed event class.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @since      1.0.0
  */
 class CacheWarmed
 {
-	use Dispatchable;
-	use SerializesModels;
+    use Dispatchable;
+    use SerializesModels;
 
-	/**
-	 * Creates a new event instance.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param array<int, string> $urls  URLs that were warmed.
-	 * @param int                $count Number of cache entries written.
-	 */
-	public function __construct(
-		public array $urls,
-		public int $count,
-	) {
-	}
+    /**
+     * Creates a new event instance.
+     *
+     * @since 1.0.0
+     *
+     * @param  array<int, string>  $urls  URLs that were warmed.
+     * @param  int  $count  Number of cache entries written.
+     */
+    public function __construct(
+        public array $urls,
+        public int $count,
+    ) {
+    }
 }

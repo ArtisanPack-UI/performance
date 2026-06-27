@@ -14,8 +14,6 @@
  * XSS sink. The `</script>` end-tag sequence is escaped at render time so
  * accidentally-bundled markup can't break out of the script block.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @author     Jacob Martella <me@jacobmartella.com>
  *
@@ -29,60 +27,52 @@ namespace ArtisanPackUI\Performance\JavaScript;
 /**
  * Inline script loading strategy.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @since      1.0.0
  */
 class InlineStrategy extends AbstractScriptStrategy
 {
-	/**
-	 * Returns the strategy's canonical name.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return string
-	 */
-	public function name(): string
-	{
-		return 'inline';
-	}
+    /**
+     * Returns the strategy's canonical name.
+     *
+     * @since 1.0.0
+     */
+    public function name(): string
+    {
+        return 'inline';
+    }
 
-	/**
-	 * Renders the registration as `<script>...inlineContent...</script>`.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param  ScriptRegistration $script The registration to render.
-	 *
-	 * @return string
-	 */
-	public function render( ScriptRegistration $script ): string
-	{
-		return sprintf(
-			'<script%s>%s</script>',
-			$this->sharedAttributes( $script ),
-			$this->escapeInlineBody( $script->inlineContent ),
-		);
-	}
+    /**
+     * Renders the registration as `<script>...inlineContent...</script>`.
+     *
+     * @since 1.0.0
+     *
+     * @param  ScriptRegistration  $script  The registration to render.
+     */
+    public function render( ScriptRegistration $script ): string
+    {
+        return sprintf(
+            '<script%s>%s</script>',
+            $this->sharedAttributes( $script ),
+            $this->escapeInlineBody( $script->inlineContent ),
+        );
+    }
 
-	/**
-	 * Escapes the inline body so it cannot break out of the `<script>` block.
-	 *
-	 * Only the `</script` sequence is dangerous in an HTML `<script>` body —
-	 * everything else is treated as JS source by the parser. Escaping the `<`
-	 * (rather than the `/`) keeps the runtime JS semantically equivalent
-	 * (`<\/script>` is still parsed as `</script>` by the JS engine) while
-	 * preventing the HTML parser from closing the tag early.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param  string $body Inline script body.
-	 *
-	 * @return string
-	 */
-	protected function escapeInlineBody( string $body ): string
-	{
-		return preg_replace( '#</(script)#i', '<\\/$1', $body ) ?? '';
-	}
+    /**
+     * Escapes the inline body so it cannot break out of the `<script>` block.
+     *
+     * Only the `</script` sequence is dangerous in an HTML `<script>` body —
+     * everything else is treated as JS source by the parser. Escaping the `<`
+     * (rather than the `/`) keeps the runtime JS semantically equivalent
+     * (`<\/script>` is still parsed as `</script>` by the JS engine) while
+     * preventing the HTML parser from closing the tag early.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $body  Inline script body.
+     */
+    protected function escapeInlineBody( string $body ): string
+    {
+        return preg_replace( '#</(script)#i', '<\\/$1', $body ) ?? '';
+    }
 }

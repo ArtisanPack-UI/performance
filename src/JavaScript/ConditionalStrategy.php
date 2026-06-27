@@ -14,8 +14,6 @@
  * scans `script[type="application/x-perf-script"]`, reads `data-src`, and
  * swaps in a live `<script>` once the trigger fires.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @author     Jacob Martella <me@jacobmartella.com>
  *
@@ -29,55 +27,49 @@ namespace ArtisanPackUI\Performance\JavaScript;
 /**
  * Conditional script loading strategy.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @since      1.0.0
  */
 class ConditionalStrategy extends AbstractScriptStrategy
 {
-	/**
-	 * Non-executable MIME type used to park the script.
-	 *
-	 * Browsers refuse to evaluate scripts whose type is not a recognized
-	 * JavaScript MIME, so the source URL stays inert until the runtime
-	 * activates it. The literal is centralized here so the runtime and
-	 * the tests reference the same value.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @var string
-	 */
-	public const PARKED_TYPE = 'application/x-perf-script';
+    /**
+     * Non-executable MIME type used to park the script.
+     *
+     * Browsers refuse to evaluate scripts whose type is not a recognized
+     * JavaScript MIME, so the source URL stays inert until the runtime
+     * activates it. The literal is centralized here so the runtime and
+     * the tests reference the same value.
+     *
+     * @since 1.0.0
+     *
+     * @var string
+     */
+    public const PARKED_TYPE = 'application/x-perf-script';
 
-	/**
-	 * Returns the strategy's canonical name.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return string
-	 */
-	public function name(): string
-	{
-		return 'conditional';
-	}
+    /**
+     * Returns the strategy's canonical name.
+     *
+     * @since 1.0.0
+     */
+    public function name(): string
+    {
+        return 'conditional';
+    }
 
-	/**
-	 * Renders the registration as a parked `<script>` element.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param  ScriptRegistration $script The registration to render.
-	 *
-	 * @return string
-	 */
-	public function render( ScriptRegistration $script ): string
-	{
-		return sprintf(
-			'<script type="%s" data-src="%s"%s></script>',
-			self::PARKED_TYPE,
-			$this->escape( $script->src ),
-			$this->sharedAttributes( $script ),
-		);
-	}
+    /**
+     * Renders the registration as a parked `<script>` element.
+     *
+     * @since 1.0.0
+     *
+     * @param  ScriptRegistration  $script  The registration to render.
+     */
+    public function render( ScriptRegistration $script ): string
+    {
+        return sprintf(
+            '<script type="%s" data-src="%s"%s></script>',
+            self::PARKED_TYPE,
+            $this->escape( $script->src ),
+            $this->sharedAttributes( $script ),
+        );
+    }
 }
