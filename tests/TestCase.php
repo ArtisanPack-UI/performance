@@ -5,6 +5,7 @@ declare( strict_types=1 );
 namespace Tests;
 
 use ArtisanPackUI\Performance\PerformanceServiceProvider;
+use Illuminate\Foundation\Application;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 
 /**
@@ -29,7 +30,7 @@ abstract class TestCase extends BaseTestCase
      *
      * @since 1.0.0
      *
-     * @param  \Illuminate\Foundation\Application  $app  The application instance.
+     * @param  Application  $app  The application instance.
      *
      * @return array<int, class-string> Array of service provider class names.
      */
@@ -45,7 +46,7 @@ abstract class TestCase extends BaseTestCase
      *
      * @since 1.0.0
      *
-     * @param  \Illuminate\Foundation\Application  $app  The application instance.
+     * @param  Application  $app  The application instance.
      */
     protected function defineEnvironment( $app ): void
     {
@@ -59,6 +60,6 @@ abstract class TestCase extends BaseTestCase
             'database'                => ':memory:',
             'prefix'                  => '',
             'foreign_key_constraints' => true,
-        ] );
+        ]);
     }
 }

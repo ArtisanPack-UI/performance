@@ -9,8 +9,6 @@
  * independent scripts (analytics, third-party widgets) that don't depend on
  * each other or on the rest of the application bundle.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @author     Jacob Martella <me@jacobmartella.com>
  *
@@ -24,40 +22,34 @@ namespace ArtisanPackUI\Performance\JavaScript;
 /**
  * Async script loading strategy.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @since      1.0.0
  */
 class AsyncStrategy extends AbstractScriptStrategy
 {
-	/**
-	 * Returns the strategy's canonical name.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return string
-	 */
-	public function name(): string
-	{
-		return 'async';
-	}
+    /**
+     * Returns the strategy's canonical name.
+     *
+     * @since 1.0.0
+     */
+    public function name(): string
+    {
+        return 'async';
+    }
 
-	/**
-	 * Renders the registration as `<script src="..." async></script>`.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param  ScriptRegistration $script The registration to render.
-	 *
-	 * @return string
-	 */
-	public function render( ScriptRegistration $script ): string
-	{
-		return sprintf(
-			'<script src="%s" async%s></script>',
-			$this->escape( $script->src ),
-			$this->sharedAttributes( $script ),
-		);
-	}
+    /**
+     * Renders the registration as `<script src="..." async></script>`.
+     *
+     * @since 1.0.0
+     *
+     * @param  ScriptRegistration  $script  The registration to render.
+     */
+    public function render( ScriptRegistration $script ): string
+    {
+        return sprintf(
+            '<script src="%s" async%s></script>',
+            $this->escape( $script->src ),
+            $this->sharedAttributes( $script ),
+        );
+    }
 }

@@ -1,5 +1,7 @@
 <?php
 
+use Tests\TestCase;
+
 /*
 |--------------------------------------------------------------------------
 | Test Case
@@ -11,8 +13,8 @@
 |
 */
 
-pest()->extend( Tests\TestCase::class )
-	->in( 'Feature' );
+pest()->extend( TestCase::class )
+    ->in( 'Feature' );
 
 /*
 |--------------------------------------------------------------------------
@@ -26,7 +28,7 @@ pest()->extend( Tests\TestCase::class )
 */
 
 expect()->extend( 'toBeOne', function () {
-	return $this->toBe( 1 );
+    return $this->toBe( 1 );
 } );
 
 /*
@@ -43,73 +45,74 @@ expect()->extend( 'toBeOne', function () {
 
 function imageFixturesDir(): string
 {
-	$dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'artisanpack-perf-fixtures';
+    $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'artisanpack-perf-fixtures';
 
-	if ( ! is_dir( $dir ) ) {
-		mkdir( $dir, 0777, true );
-	}
+    if ( ! is_dir( $dir ) ) {
+        mkdir( $dir, 0777, true );
+    }
 
-	return $dir;
+    return $dir;
 }
 
 function makeTestImage(
-	string $filename,
-	int $width = 200,
-	int $height = 120,
-	string $format = 'jpeg',
-	array $rgb = [ 220, 30, 60 ],
+    string $filename,
+    int $width = 200,
+    int $height = 120,
+    string $format = 'jpeg',
+    array $rgb = [220, 30, 60],
 ): string {
-	$path  = imageFixturesDir() . DIRECTORY_SEPARATOR . $filename;
-	$image = imagecreatetruecolor( $width, $height );
+    $path  = imageFixturesDir() . DIRECTORY_SEPARATOR . $filename;
+    $image = imagecreatetruecolor( $width, $height );
 
-	$color = imagecolorallocate( $image, $rgb[0], $rgb[1], $rgb[2] );
-	imagefilledrectangle( $image, 0, 0, $width, $height, $color );
+    $color = imagecolorallocate( $image, $rgb[0], $rgb[1], $rgb[2] );
+    imagefilledrectangle( $image, 0, 0, $width, $height, $color );
 
-	switch ( strtolower( $format ) ) {
-		case 'png':
-			imagepng( $image, $path );
-			break;
-		case 'gif':
-			imagegif( $image, $path );
-			break;
-		case 'jpeg':
-		case 'jpg':
-		default:
-			imagejpeg( $image, $path, 90 );
-			break;
-	}
+    switch ( strtolower( $format ) ) {
+        case 'png':
+            imagepng( $image, $path );
+            break;
+        case 'gif':
+            imagegif( $image, $path );
+            break;
+        case 'jpeg':
+        case 'jpg':
+        default:
+            imagejpeg( $image, $path, 90 );
+            break;
+    }
 
-	imagedestroy( $image );
+    imagedestroy( $image );
 
-	return $path;
+    return $path;
 }
 
 function clearImageFixtures(): void
 {
-	$dir = imageFixturesDir();
+    $dir = imageFixturesDir();
 
-	if ( ! is_dir( $dir ) ) {
-		return;
-	}
+    if ( ! is_dir( $dir ) ) {
+        return;
+    }
 
-	foreach ( scandir( $dir ) as $entry ) {
-		if ( '.' === $entry || '..' === $entry ) {
-			continue;
-		}
+    foreach ( scandir( $dir ) as $entry ) {
+        if ( '.' === $entry || '..' === $entry ) {
+            continue;
+        }
 
-		$path = $dir . DIRECTORY_SEPARATOR . $entry;
+        $path = $dir . DIRECTORY_SEPARATOR . $entry;
 
-		if ( is_dir( $path ) ) {
-			foreach ( scandir( $path ) as $nested ) {
-				if ( '.' === $nested || '..' === $nested ) {
-					continue;
-				}
-				@unlink( $path . DIRECTORY_SEPARATOR . $nested );
-			}
-			@rmdir( $path );
-			continue;
-		}
+        if ( is_dir( $path ) ) {
+            foreach ( scandir( $path ) as $nested ) {
+                if ( '.' === $nested || '..' === $nested ) {
+                    continue;
+                }
+                @unlink( $path . DIRECTORY_SEPARATOR . $nested );
+            }
+            @rmdir( $path);
 
-		@unlink( $path );
-	}
+            continue;
+        }
+
+        @unlink( $path);
+    }
 }

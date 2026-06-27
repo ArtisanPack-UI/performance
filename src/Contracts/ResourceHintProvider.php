@@ -13,8 +13,6 @@
  * Returning an empty array is valid — a provider may legitimately have
  * nothing to contribute for the current request.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @author     Jacob Martella <me@jacobmartella.com>
  *
@@ -30,24 +28,22 @@ use ArtisanPackUI\Performance\Output\ResourceHint;
 /**
  * Resource hint provider contract.
  *
- * @package    ArtisanPack_UI
- * @subpackage Performance
  *
  * @since      1.0.0
  */
 interface ResourceHintProvider
 {
-	/**
-	 * Returns the hints this provider wants injected into the response.
-	 *
-	 * Implementations should return an array of fully-constructed
-	 * `ResourceHint` instances. Invalid hints should be filtered out by
-	 * the provider rather than handed to the injector to fail-soft on,
-	 * since the injector deduplicates and renders without re-validating.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return array<int, ResourceHint>
-	 */
-	public function hints(): array;
+    /**
+     * Returns the hints this provider wants injected into the response.
+     *
+     * Implementations should return an array of fully-constructed
+     * `ResourceHint` instances. Invalid hints should be filtered out by
+     * the provider rather than handed to the injector to fail-soft on,
+     * since the injector deduplicates and renders without re-validating.
+     *
+     * @since 1.0.0
+     *
+     * @return array<int, ResourceHint>
+     */
+    public function hints(): array;
 }
