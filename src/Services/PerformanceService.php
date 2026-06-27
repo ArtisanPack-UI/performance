@@ -20,7 +20,10 @@ declare( strict_types=1 );
 
 namespace ArtisanPackUI\Performance\Services;
 
+use ArtisanPackUI\Performance\Css\CriticalCssExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
+use ArtisanPackUI\Performance\JavaScript\ScriptManager;
+use ArtisanPackUI\Performance\JavaScript\ScriptRegistration;
 use Closure;
 use RuntimeException;
 
@@ -55,19 +58,49 @@ class PerformanceService
 	protected ?ResponsiveImageGenerator $responsiveImages = null;
 
 	/**
+	 * Script manager service (lazily instantiated when first accessed).
+	 *
+	 * Defaulted to `null` so subclasses that touch the property before
+	 * `parent::__construct()` runs don't trip the typed-property-uninitialized
+	 * AccessError — matches the convention used by `$responsiveImages` above.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @var ScriptManager|null
+	 */
+	protected ?ScriptManager $scripts = null;
+
+	/**
+	 * Critical CSS extractor (lazily instantiated when first accessed).
+	 *
+	 * Defaulted to `null` for the same reason as `$scripts`.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @var CriticalCssExtractor|null
+	 */
+	protected ?CriticalCssExtractor $criticalCss = null;
+
+	/**
 	 * Creates a new performance service.
 	 *
 	 * @since 1.0.0
 	 *
 	 * @param ImageService|null             $images           Optional image service override.
 	 * @param ResponsiveImageGenerator|null $responsiveImages Optional responsive generator override.
+	 * @param ScriptManager|null            $scripts          Optional script manager override.
+	 * @param CriticalCssExtractor|null     $criticalCss      Optional critical CSS extractor override.
 	 */
 	public function __construct(
 		?ImageService $images = null,
 		?ResponsiveImageGenerator $responsiveImages = null,
+		?ScriptManager $scripts = null,
+		?CriticalCssExtractor $criticalCss = null,
 	) {
 		$this->images           = $images ?? new ImageService();
 		$this->responsiveImages = $responsiveImages;
+		$this->scripts          = $scripts;
+		$this->criticalCss      = $criticalCss;
 	}
 
 	/**
@@ -210,20 +243,65 @@ class PerformanceService
 	}
 
 	/**
-	 * Registers a script with the package's script manager.
-	 *
-	 * Phase 1 returns an empty array so callers can't couple to a fabricated
-	 * shape. Phase 3 will swap the return type to a fluent ScriptBuilder.
+	 * Returns the script manager, instantiating one on first access.
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param string $src The script source URL or path.
-	 *
-	 * @return array<string, mixed> A descriptor for the registered script.
+	 * @return ScriptManager
 	 */
-	public function script( string $src ): array
+	public function scripts(): ScriptManager
 	{
-		return [];
+		return $this->scripts ??= new ScriptManager();
+	}
+
+	/**
+	 * Returns the critical CSS extractor, instantiating one on first access.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return CriticalCssExtractor
+	 */
+	public function criticalCss(): CriticalCssExtractor
+	{
+		return $this->criticalCss ??= new CriticalCssExtractor();
+	}
+
+	/**
+	 * Registers a script with the script manager and returns its registration.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param  string $src Script source URL or path.
+	 *
+	 * @return ScriptRegistration
+	 */
+	public function script( string $src ): ScriptRegistration
+	{
+		return $this->scripts()->register( $src );
+	}
+
+	/**
+	 * Returns every registered script in priority order.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return array<int, ScriptRegistration>
+	 */
+	public function getScripts(): array
+	{
+		return $this->scripts()->all();
+	}
+
+	/**
+	 * Renders every registered script to an HTML block.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return string
+	 */
+	public function renderScripts(): string
+	{
+		return $this->scripts()->render();
 	}
 
 	/**

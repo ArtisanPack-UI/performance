@@ -20,14 +20,19 @@ declare( strict_types=1 );
 
 namespace ArtisanPackUI\Performance;
 
+use ArtisanPackUI\Performance\Console\Commands\GenerateCriticalCssCommand;
 use ArtisanPackUI\Performance\Console\Commands\GenerateWebPCommand;
+use ArtisanPackUI\Performance\Css\CriticalCssExtractor;
 use ArtisanPackUI\Performance\Images\DominantColorExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
+use ArtisanPackUI\Performance\JavaScript\ScriptManager;
 use ArtisanPackUI\Performance\Services\Image\FormatConverter;
 use ArtisanPackUI\Performance\Services\ImageService;
 use ArtisanPackUI\Performance\Services\PerformanceService;
+use ArtisanPackUI\Performance\View\Components\CriticalCss;
 use ArtisanPackUI\Performance\View\Components\LazyImage;
 use ArtisanPackUI\Performance\View\Components\ResponsiveImage;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -77,8 +82,21 @@ class PerformanceServiceProvider extends ServiceProvider
 			return new ResponsiveImageGenerator( $app->make( ImageService::class ) );
 		} );
 
+		$this->app->singleton( ScriptManager::class, function () {
+			return new ScriptManager();
+		} );
+
+		$this->app->singleton( CriticalCssExtractor::class, function () {
+			return new CriticalCssExtractor();
+		} );
+
 		$this->app->singleton( 'performance', function ( $app ) {
-			return new PerformanceService( $app->make( ImageService::class ) );
+			return new PerformanceService(
+				$app->make( ImageService::class ),
+				null,
+				$app->make( ScriptManager::class ),
+				$app->make( CriticalCssExtractor::class ),
+			);
 		} );
 
 		$this->app->singleton( PerformanceService::class, function ( $app ) {
@@ -99,6 +117,8 @@ class PerformanceServiceProvider extends ServiceProvider
 		$this->loadMigrationsFrom( __DIR__ . '/../database/migrations' );
 		$this->loadViewsFrom( __DIR__ . '/../resources/views', 'performance' );
 		$this->loadBladeComponents();
+		$this->registerBladeDirectives();
+		$this->registerCriticalCssSources();
 		$this->registerEventListeners();
 		$this->registerCommands();
 		$this->publishConfiguration();
@@ -120,6 +140,7 @@ class PerformanceServiceProvider extends ServiceProvider
 		$this->loadViewComponentsAs( 'perf', [
 			LazyImage::class,
 			ResponsiveImage::class,
+			CriticalCss::class,
 		] );
 	}
 
@@ -135,7 +156,71 @@ class PerformanceServiceProvider extends ServiceProvider
 		if ( $this->app->runningInConsole() ) {
 			$this->commands( [
 				GenerateWebPCommand::class,
+				GenerateCriticalCssCommand::class,
 			] );
+		}
+	}
+
+	/**
+	 * Registers the package's Blade directives.
+	 *
+	 * `@criticalCss` resolves the current route name (falling back to
+	 * `default` when none is named) and emits the cached critical-CSS
+	 * `<style>` block produced by `CriticalCssExtractor`.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return void
+	 */
+	protected function registerBladeDirectives(): void
+	{
+		Blade::directive( 'criticalCss', function ( string $expression ): string {
+			$argument = trim( $expression );
+
+			if ( '' === $argument ) {
+				$argument = 'null';
+			}
+
+			// Route-name fallback uses CriticalCssExtractor::DEFAULT_ROUTE so
+			// the sentinel stays in lockstep with the extractor's own
+			// `generate()` fallback. Hardcoding the literal here would let
+			// the two call sites drift if the sentinel ever changes.
+			return sprintf(
+				'<?php echo app(%s)->inlineFor(%s ?? (request()->route()?->getName() ?? %s)); ?>',
+				CriticalCssExtractor::class . '::class',
+				$argument,
+				var_export( CriticalCssExtractor::DEFAULT_ROUTE, true ),
+			);
+		} );
+	}
+
+	/**
+	 * Registers critical CSS sources declared in package config.
+	 *
+	 * Reads `artisanpack.performance.css.critical.sources` (a map of
+	 * `route => path-or-content` or `route => [paths-or-contents]`) and feeds
+	 * each entry into the singleton extractor so application service providers
+	 * don't have to wire registration themselves for static, config-driven
+	 * setups.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return void
+	 */
+	protected function registerCriticalCssSources(): void
+	{
+		$sources = (array) config( 'artisanpack.performance.css.critical.sources', [] );
+
+		if ( empty( $sources ) ) {
+			return;
+		}
+
+		$extractor = $this->app->make( CriticalCssExtractor::class );
+
+		foreach ( $sources as $route => $entries ) {
+			foreach ( (array) $entries as $entry ) {
+				$extractor->registerSource( (string) $route, (string) $entry );
+			}
 		}
 	}
 

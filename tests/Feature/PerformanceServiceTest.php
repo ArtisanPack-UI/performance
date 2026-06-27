@@ -118,13 +118,22 @@ it( 'delegates image methods to the ImageService', function (): void {
 	expect( $srcset )->toContain( '100w' );
 } );
 
-it( 'returns no-op defaults for script and metric and recommendation methods', function (): void {
+it( 'returns no-op defaults for metric and recommendation methods', function (): void {
 	$service = app( PerformanceService::class );
 
-	expect( $service->script( '/js/app.js' ) )->toBe( [] )
-		->and( $service->getRecommendations() )->toBe( [] );
+	expect( $service->getRecommendations() )->toBe( [] );
 
 	// recordMetric is a no-op; just assert it returns void without throwing.
 	$service->recordMetric( 'LCP', 1234.5 );
 	expect( true )->toBeTrue();
+} );
+
+it( 'returns a ScriptRegistration from the script() facade entry point', function (): void {
+	$service = app( PerformanceService::class );
+
+	$registration = $service->script( '/js/app.js' );
+
+	expect( $registration )->toBeInstanceOf( ArtisanPackUI\Performance\JavaScript\ScriptRegistration::class )
+		->and( $registration->src )->toBe( '/js/app.js' )
+		->and( $service->getScripts() )->toContain( $registration );
 } );
