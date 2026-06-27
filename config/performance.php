@@ -145,10 +145,12 @@ return [
 	*/
 
 	'resource_hints' => [
-		'auto_generate' => true,
-		'preconnect'    => [],
-		'dns_prefetch'  => [],
-		'preload'       => [],
+		'auto_generate'  => true,
+		'preconnect'     => [],
+		'dns_prefetch'   => [],
+		'preload'        => [],
+		'prefetch'       => [],
+		'exclude_routes' => [ 'admin/*', 'api/*' ],
 	],
 
 	/*
