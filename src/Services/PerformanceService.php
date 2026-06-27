@@ -24,6 +24,7 @@ use ArtisanPackUI\Performance\Css\CriticalCssExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use ArtisanPackUI\Performance\JavaScript\ScriptManager;
 use ArtisanPackUI\Performance\JavaScript\ScriptRegistration;
+use ArtisanPackUI\Performance\Output\ResourceHintInjector;
 use Closure;
 use RuntimeException;
 
@@ -82,6 +83,15 @@ class PerformanceService
 	protected ?CriticalCssExtractor $criticalCss = null;
 
 	/**
+	 * Resource hint injector (lazily instantiated when first accessed).
+	 *
+	 * @since 1.0.0
+	 *
+	 * @var ResourceHintInjector|null
+	 */
+	protected ?ResourceHintInjector $resourceHints = null;
+
+	/**
 	 * Creates a new performance service.
 	 *
 	 * @since 1.0.0
@@ -90,17 +100,20 @@ class PerformanceService
 	 * @param ResponsiveImageGenerator|null $responsiveImages Optional responsive generator override.
 	 * @param ScriptManager|null            $scripts          Optional script manager override.
 	 * @param CriticalCssExtractor|null     $criticalCss      Optional critical CSS extractor override.
+	 * @param ResourceHintInjector|null     $resourceHints    Optional resource hint injector override.
 	 */
 	public function __construct(
 		?ImageService $images = null,
 		?ResponsiveImageGenerator $responsiveImages = null,
 		?ScriptManager $scripts = null,
 		?CriticalCssExtractor $criticalCss = null,
+		?ResourceHintInjector $resourceHints = null,
 	) {
 		$this->images           = $images ?? new ImageService();
 		$this->responsiveImages = $responsiveImages;
 		$this->scripts          = $scripts;
 		$this->criticalCss      = $criticalCss;
+		$this->resourceHints    = $resourceHints;
 	}
 
 	/**
@@ -264,6 +277,18 @@ class PerformanceService
 	public function criticalCss(): CriticalCssExtractor
 	{
 		return $this->criticalCss ??= new CriticalCssExtractor();
+	}
+
+	/**
+	 * Returns the resource hint injector, instantiating one on first access.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return ResourceHintInjector
+	 */
+	public function resourceHints(): ResourceHintInjector
+	{
+		return $this->resourceHints ??= new ResourceHintInjector();
 	}
 
 	/**

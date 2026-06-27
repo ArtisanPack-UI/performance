@@ -236,6 +236,20 @@ class ScriptRegistration
 	}
 
 	/**
+	 * Switches the strategy to `conditional`.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return $this
+	 */
+	public function conditional(): self
+	{
+		$this->strategy = 'conditional';
+
+		return $this;
+	}
+
+	/**
 	 * Sets the rendering priority. Lower values render first.
 	 *
 	 * @since 1.0.0

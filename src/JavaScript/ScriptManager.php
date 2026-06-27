@@ -70,6 +70,7 @@ class ScriptManager
 			new AsyncStrategy(),
 			new ModuleStrategy(),
 			new InlineStrategy(),
+			new ConditionalStrategy(),
 		];
 
 		foreach ( $bundled as $strategy ) {

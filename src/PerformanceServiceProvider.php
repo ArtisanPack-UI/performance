@@ -26,11 +26,17 @@ use ArtisanPackUI\Performance\Css\CriticalCssExtractor;
 use ArtisanPackUI\Performance\Images\DominantColorExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use ArtisanPackUI\Performance\JavaScript\ScriptManager;
+use ArtisanPackUI\Performance\Output\ResourceHintInjector;
 use ArtisanPackUI\Performance\Services\Image\FormatConverter;
 use ArtisanPackUI\Performance\Services\ImageService;
 use ArtisanPackUI\Performance\Services\PerformanceService;
+use ArtisanPackUI\Performance\Support\ResourceHintDirectives;
+use ArtisanPackUI\Performance\Support\ScriptDirectives;
 use ArtisanPackUI\Performance\View\Components\CriticalCss;
 use ArtisanPackUI\Performance\View\Components\LazyImage;
+use ArtisanPackUI\Performance\View\Components\PerfConditionalScript;
+use ArtisanPackUI\Performance\View\Components\PerfScript;
+use ArtisanPackUI\Performance\View\Components\ResourceHints;
 use ArtisanPackUI\Performance\View\Components\ResponsiveImage;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
@@ -90,12 +96,17 @@ class PerformanceServiceProvider extends ServiceProvider
 			return new CriticalCssExtractor();
 		} );
 
+		$this->app->singleton( ResourceHintInjector::class, function () {
+			return new ResourceHintInjector();
+		} );
+
 		$this->app->singleton( 'performance', function ( $app ) {
 			return new PerformanceService(
 				$app->make( ImageService::class ),
 				null,
 				$app->make( ScriptManager::class ),
 				$app->make( CriticalCssExtractor::class ),
+				$app->make( ResourceHintInjector::class ),
 			);
 		} );
 
@@ -141,6 +152,9 @@ class PerformanceServiceProvider extends ServiceProvider
 			LazyImage::class,
 			ResponsiveImage::class,
 			CriticalCss::class,
+			ResourceHints::class,
+			'script'             => PerfScript::class,
+			'conditional-script' => PerfConditionalScript::class,
 		] );
 	}
 
@@ -192,6 +206,67 @@ class PerformanceServiceProvider extends ServiceProvider
 				var_export( CriticalCssExtractor::DEFAULT_ROUTE, true ),
 			);
 		} );
+
+		// Resource hint directives — each compiles to a single `<link>` element.
+		// Argument forwarding is positional and matches the runtime helper
+		// (`ResourceHintDirectives::preconnect()` etc.) so optional attributes
+		// like `crossorigin` or `as` work without parsing the Blade expression
+		// here.
+		$resourceHintHelper = ResourceHintDirectives::class;
+
+		Blade::directive( 'preconnect', static fn ( string $expression ): string => sprintf(
+			'<?php echo \\%s::preconnect(%s); ?>',
+			$resourceHintHelper,
+			$expression,
+		) );
+
+		Blade::directive( 'dnsPrefetch', static fn ( string $expression ): string => sprintf(
+			'<?php echo \\%s::dnsPrefetch(%s); ?>',
+			$resourceHintHelper,
+			$expression,
+		) );
+
+		Blade::directive( 'preload', static fn ( string $expression ): string => sprintf(
+			'<?php echo \\%s::preload(%s); ?>',
+			$resourceHintHelper,
+			$expression,
+		) );
+
+		Blade::directive( 'prefetch', static fn ( string $expression ): string => sprintf(
+			'<?php echo \\%s::prefetch(%s); ?>',
+			$resourceHintHelper,
+			$expression,
+		) );
+
+		// Script loading directives. The helper hands the registration to the
+		// resolved `ScriptManager` so applications that swap a strategy
+		// (e.g. for CSP-aware rendering) see their override picked up by the
+		// directive output as well.
+		$scriptHelper = ScriptDirectives::class;
+
+		Blade::directive( 'deferScript', static fn ( string $expression ): string => sprintf(
+			'<?php echo \\%s::defer(%s); ?>',
+			$scriptHelper,
+			$expression,
+		) );
+
+		Blade::directive( 'asyncScript', static fn ( string $expression ): string => sprintf(
+			'<?php echo \\%s::async(%s); ?>',
+			$scriptHelper,
+			$expression,
+		) );
+
+		Blade::directive( 'moduleScript', static fn ( string $expression ): string => sprintf(
+			'<?php echo \\%s::module(%s); ?>',
+			$scriptHelper,
+			$expression,
+		) );
+
+		Blade::directive( 'conditionalScript', static fn ( string $expression ): string => sprintf(
+			'<?php echo \\%s::conditional(%s); ?>',
+			$scriptHelper,
+			$expression,
+		) );
 	}
 
 	/**

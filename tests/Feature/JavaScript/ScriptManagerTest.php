@@ -4,6 +4,7 @@ declare( strict_types=1 );
 
 use ArtisanPackUI\Performance\Facades\Performance;
 use ArtisanPackUI\Performance\JavaScript\AsyncStrategy;
+use ArtisanPackUI\Performance\JavaScript\ConditionalStrategy;
 use ArtisanPackUI\Performance\JavaScript\DeferStrategy;
 use ArtisanPackUI\Performance\JavaScript\InlineStrategy;
 use ArtisanPackUI\Performance\JavaScript\ModuleStrategy;
@@ -20,17 +21,20 @@ it( 'registers a script and returns a fluent ScriptRegistration', function (): v
 		->and( $registration->src )->toBe( '/js/app.js' );
 } );
 
-it( 'seeds the four bundled strategies by default', function (): void {
+it( 'seeds the five bundled strategies by default', function (): void {
 	$strategies = ( new ScriptManager() )->strategies();
 
-	expect( $strategies )->toHaveKey( 'defer' )
+	expect( $strategies )->toHaveCount( 5 )
+		->and( $strategies )->toHaveKey( 'defer' )
 		->and( $strategies )->toHaveKey( 'async' )
 		->and( $strategies )->toHaveKey( 'module' )
 		->and( $strategies )->toHaveKey( 'inline' )
+		->and( $strategies )->toHaveKey( 'conditional' )
 		->and( $strategies['defer'] )->toBeInstanceOf( DeferStrategy::class )
 		->and( $strategies['async'] )->toBeInstanceOf( AsyncStrategy::class )
 		->and( $strategies['module'] )->toBeInstanceOf( ModuleStrategy::class )
-		->and( $strategies['inline'] )->toBeInstanceOf( InlineStrategy::class );
+		->and( $strategies['inline'] )->toBeInstanceOf( InlineStrategy::class )
+		->and( $strategies['conditional'] )->toBeInstanceOf( ConditionalStrategy::class );
 } );
 
 it( 'sorts registered scripts by priority ascending', function (): void {
