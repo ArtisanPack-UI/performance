@@ -18,6 +18,9 @@ declare( strict_types=1 );
 
 namespace ArtisanPackUI\Performance\Services;
 
+use ArtisanPackUI\Performance\Cache\CacheInvalidator;
+use ArtisanPackUI\Performance\Cache\FragmentCache;
+use ArtisanPackUI\Performance\Cache\PageCacheManager;
 use ArtisanPackUI\Performance\Css\CriticalCssExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use ArtisanPackUI\Performance\JavaScript\ScriptManager;
@@ -27,6 +30,7 @@ use ArtisanPackUI\Performance\Speculative\PrefetchManager;
 use ArtisanPackUI\Performance\Speculative\PrerenderManager;
 use ArtisanPackUI\Performance\Speculative\SpeculativeRulesGenerator;
 use Closure;
+use Illuminate\Http\Request;
 use RuntimeException;
 
 /**
@@ -109,6 +113,27 @@ class PerformanceService
     protected ?EmbedOptimizer $embedOptimizer = null;
 
     /**
+     * Page cache manager (lazily instantiated when first accessed).
+     *
+     * @since 1.0.0
+     */
+    protected ?PageCacheManager $pageCache = null;
+
+    /**
+     * Fragment cache (lazily instantiated when first accessed).
+     *
+     * @since 1.0.0
+     */
+    protected ?FragmentCache $fragmentCache = null;
+
+    /**
+     * Cache invalidator (lazily instantiated when first accessed).
+     *
+     * @since 1.0.0
+     */
+    protected ?CacheInvalidator $cacheInvalidator = null;
+
+    /**
      * Creates a new performance service.
      *
      * @since 1.0.0
@@ -122,6 +147,9 @@ class PerformanceService
      * @param  PrefetchManager|null  $prefetchManager  Optional prefetch manager override.
      * @param  PrerenderManager|null  $prerenderManager  Optional prerender manager override.
      * @param  EmbedOptimizer|null  $embedOptimizer  Optional embed optimizer override.
+     * @param  PageCacheManager|null  $pageCache  Optional page cache manager override.
+     * @param  FragmentCache|null  $fragmentCache  Optional fragment cache override.
+     * @param  CacheInvalidator|null  $cacheInvalidator  Optional invalidator override.
      */
     public function __construct(
         ?ImageService $images = null,
@@ -133,6 +161,9 @@ class PerformanceService
         ?PrefetchManager $prefetchManager = null,
         ?PrerenderManager $prerenderManager = null,
         ?EmbedOptimizer $embedOptimizer = null,
+        ?PageCacheManager $pageCache = null,
+        ?FragmentCache $fragmentCache = null,
+        ?CacheInvalidator $cacheInvalidator = null,
     ) {
         $this->images           = $images ?? new ImageService;
         $this->responsiveImages = $responsiveImages;
@@ -143,6 +174,9 @@ class PerformanceService
         $this->prefetchManager  = $prefetchManager;
         $this->prerenderManager = $prerenderManager;
         $this->embedOptimizer   = $embedOptimizer;
+        $this->pageCache        = $pageCache;
+        $this->fragmentCache    = $fragmentCache;
+        $this->cacheInvalidator = $cacheInvalidator;
     }
 
     /**
@@ -348,6 +382,118 @@ class PerformanceService
     public function embedOptimizer(): EmbedOptimizer
     {
         return $this->embedOptimizer ??= new EmbedOptimizer;
+    }
+
+    /**
+     * Returns the page cache manager, instantiating one on first access.
+     *
+     * @since 1.0.0
+     */
+    public function pageCache(): PageCacheManager
+    {
+        return $this->pageCache ??= new PageCacheManager;
+    }
+
+    /**
+     * Returns the fragment cache, instantiating one on first access.
+     *
+     * @since 1.0.0
+     */
+    public function fragmentCache(): FragmentCache
+    {
+        return $this->fragmentCache ??= new FragmentCache;
+    }
+
+    /**
+     * Returns the cache invalidator, instantiating one on first access.
+     *
+     * @since 1.0.0
+     */
+    public function cacheInvalidator(): CacheInvalidator
+    {
+        return $this->cacheInvalidator ??= new CacheInvalidator( $this->pageCache(), $this->fragmentCache() );
+    }
+
+    /**
+     * Caches a fragment of view output produced by the callback.
+     *
+     * Proxy for `fragmentCache()->remember()` with the standard `(key, ttl,
+     * callback, tags)` signature.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $key  Cache key.
+     * @param  int  $ttl  Time-to-live in seconds.
+     * @param  Closure  $callback  Callback whose return value is cached.
+     * @param  array<int, string>  $tags  Tags to associate with the fragment.
+     *
+     * @return mixed
+     */
+    public function fragmentRemember( string $key, int $ttl, Closure $callback, array $tags = [] ): mixed
+    {
+        return $this->fragmentCache()->remember( $key, $ttl, $callback, $tags );
+    }
+
+    /**
+     * Invalidates page cache entries matching the given pattern.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $pattern  Path pattern with optional wildcards.
+     */
+    public function invalidatePageCache( string $pattern ): int
+    {
+        return $this->cacheInvalidator()->invalidatePagePattern( $pattern );
+    }
+
+    /**
+     * Flushes every page cache entry written by the package.
+     *
+     * @since 1.0.0
+     */
+    public function flushPageCache(): int
+    {
+        return $this->cacheInvalidator()->flushPageCache();
+    }
+
+    /**
+     * Invalidates fragment cache entries registered under the given tag.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $tag  Tag name.
+     */
+    public function invalidateFragmentsByTag( string $tag ): int
+    {
+        return $this->cacheInvalidator()->invalidateFragmentTag( $tag );
+    }
+
+    /**
+     * Warms the page cache for the given URLs.
+     *
+     * @since 1.0.0
+     *
+     * @param  array<int, string>  $urls  URLs to warm.
+     *
+     * @return array<string, array{status: int|null, ok: bool, error: string|null}>
+     */
+    public function warmPageCache( array $urls ): array
+    {
+        return $this->pageCache()->warmPageCache( $urls );
+    }
+
+    /**
+     * Retrieves a cached page payload for the given request, if any.
+     *
+     * @since 1.0.0
+     *
+     * @param  Request  $request  Incoming request.
+     *
+     * @return array{status: int, content: string, headers: array<string, string>}|null
+     */
+    public function getCachedPage( Request $request ): ?array
+    {
+        return $this->pageCache()->getCachedResponse( $request );
     }
 
     /**
@@ -558,7 +704,7 @@ class PerformanceService
      * @param  float  $value  The metric value.
      * @param  array<string, mixed>  $context  Optional contextual data.
      */
-    public function recordMetric( string $name, float $value, array $context = []): void
+    public function recordMetric( string $name, float $value, array $context = [] ): void
     {
         // Implemented in Phase 8 (monitoring).
     }

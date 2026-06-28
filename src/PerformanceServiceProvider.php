@@ -18,8 +18,13 @@ declare( strict_types=1 );
 
 namespace ArtisanPackUI\Performance;
 
+use ArtisanPackUI\Performance\Cache\CacheInvalidator;
+use ArtisanPackUI\Performance\Cache\FragmentCache;
+use ArtisanPackUI\Performance\Cache\PageCacheManager;
 use ArtisanPackUI\Performance\Console\Commands\GenerateCriticalCssCommand;
 use ArtisanPackUI\Performance\Console\Commands\GenerateWebPCommand;
+use ArtisanPackUI\Performance\Console\Commands\PurgeCacheCommand;
+use ArtisanPackUI\Performance\Console\Commands\WarmCacheCommand;
 use ArtisanPackUI\Performance\Css\CriticalCssExtractor;
 use ArtisanPackUI\Performance\Images\DominantColorExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
@@ -118,6 +123,21 @@ class PerformanceServiceProvider extends ServiceProvider
             return new EmbedOptimizer;
         } );
 
+        $this->app->singleton( PageCacheManager::class, function () {
+            return new PageCacheManager;
+        } );
+
+        $this->app->singleton( FragmentCache::class, function () {
+            return new FragmentCache;
+        } );
+
+        $this->app->singleton( CacheInvalidator::class, function ( $app ) {
+            return new CacheInvalidator(
+                $app->make( PageCacheManager::class ),
+                $app->make( FragmentCache::class ),
+            );
+        } );
+
         $this->app->singleton( 'performance', function ( $app ) {
             return new PerformanceService(
                 $app->make( ImageService::class ),
@@ -129,6 +149,9 @@ class PerformanceServiceProvider extends ServiceProvider
                 $app->make( PrefetchManager::class ),
                 $app->make( PrerenderManager::class ),
                 $app->make( EmbedOptimizer::class ),
+                $app->make( PageCacheManager::class ),
+                $app->make( FragmentCache::class ),
+                $app->make( CacheInvalidator::class ),
             );
         } );
 
@@ -220,6 +243,8 @@ class PerformanceServiceProvider extends ServiceProvider
             $this->commands( [
                 GenerateWebPCommand::class,
                 GenerateCriticalCssCommand::class,
+                WarmCacheCommand::class,
+                PurgeCacheCommand::class,
             ] );
         }
     }
@@ -333,6 +358,75 @@ class PerformanceServiceProvider extends ServiceProvider
                 $speculativeHelper,
                 $argument,
             );
+        } );
+
+        // Fragment cache directive. `@cache(key, ttl, tags)` captures the
+        // enclosed Blade output via `ob_start()` and round-trips it through
+        // the FragmentCache so the rendered partial is reused on subsequent
+        // requests. The TTL and tag list are optional — falling through to
+        // the configured `default_ttl` and an empty tag list respectively.
+        //
+        // State is pushed onto a per-render stack so nested
+        // `@cache ... @cache ... @endcache @endcache` blocks don't clobber
+        // each other's scope. Without the stack the shared variables would
+        // be either fatally `unset()` (inner-MISS case) or silently
+        // overwritten (inner-HIT case), poisoning the outer write.
+        Blade::directive( 'cache', static function ( string $expression ): string {
+            $argument = trim( $expression );
+
+            if ( '' === $argument ) {
+                $argument = "''";
+            }
+
+            // Blade can't skip statements between `@cache` and `@endcache` —
+            // the directive output is just inlined PHP, not a control
+            // structure. So even on a HIT, the body code still runs. We
+            // suppress its rendered output by starting an output buffer at
+            // `@cache` in BOTH branches: on HIT the cached content is
+            // echoed first and the buffered body is discarded at
+            // `@endcache`; on MISS the buffered body is the value we
+            // cache + echo. State is pushed onto a per-render stack so
+            // nested directives don't clobber each other's frames.
+            return sprintf(
+                '<?php $__perfFragmentStack = $__perfFragmentStack ?? []; '
+                . '$__perfFragmentArgs = [%s]; '
+                . '$__perfFragmentFrame = [ '
+                . '    "cache" => app(\\%s::class), '
+                . '    "key" => (string) ($__perfFragmentArgs[0] ?? \'\'), '
+                . '    "ttl" => (int) ($__perfFragmentArgs[1] ?? 0), '
+                . '    "tags" => (array) ($__perfFragmentArgs[2] ?? []), '
+                . ']; '
+                . '$__perfFragmentHit = $__perfFragmentFrame["cache"]->get($__perfFragmentFrame["key"]); '
+                . 'if (is_string($__perfFragmentHit)) { '
+                . '    echo $__perfFragmentHit; '
+                . '    $__perfFragmentFrame["hit"] = true; '
+                . '} else { '
+                . '    $__perfFragmentFrame["hit"] = false; '
+                . '} '
+                . 'ob_start(); '
+                . '$__perfFragmentStack[] = $__perfFragmentFrame; '
+                . 'unset($__perfFragmentArgs, $__perfFragmentFrame, $__perfFragmentHit); ?>',
+                $argument,
+                FragmentCache::class,
+            );
+        } );
+
+        Blade::directive( 'endcache', static function (): string {
+            return '<?php $__perfFragmentFrame = array_pop($__perfFragmentStack); '
+                . 'if (is_array($__perfFragmentFrame)) { '
+                . '    $__perfFragmentOutput = (string) ob_get_clean(); '
+                . '    if (false === $__perfFragmentFrame["hit"]) { '
+                . '        $__perfFragmentFrame["cache"]->put('
+                . '            $__perfFragmentFrame["key"], '
+                . '            $__perfFragmentOutput, '
+                . '            $__perfFragmentFrame["ttl"], '
+                . '            $__perfFragmentFrame["tags"]'
+                . '        ); '
+                . '        echo $__perfFragmentOutput; '
+                . '    } '
+                . '    unset($__perfFragmentOutput); '
+                . '} '
+                . 'unset($__perfFragmentFrame); ?>';
         } );
     }
 

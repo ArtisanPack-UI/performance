@@ -191,6 +191,79 @@ if ( ! function_exists( 'perfFlushCache' ) ) {
     }
 }
 
+if ( ! function_exists( 'perfFragmentRemember' ) ) {
+    /**
+     * Caches a view fragment under the given key, with optional tag list.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $key  Cache key.
+     * @param  int  $ttl  Time-to-live in seconds.
+     * @param  Closure  $callback  Callback whose return value is cached.
+     * @param  array<int, string>  $tags  Tags to register the fragment under.
+     */
+    function perfFragmentRemember( string $key, int $ttl, Closure $callback, array $tags = [] ): mixed
+    {
+        return performance()->fragmentRemember( $key, $ttl, $callback, $tags );
+    }
+}
+
+if ( ! function_exists( 'perfInvalidatePageCache' ) ) {
+    /**
+     * Invalidates page cache entries matching the given pattern.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $pattern  Path pattern.
+     */
+    function perfInvalidatePageCache( string $pattern ): int
+    {
+        return performance()->invalidatePageCache( $pattern );
+    }
+}
+
+if ( ! function_exists( 'perfFlushPageCache' ) ) {
+    /**
+     * Flushes every page cache entry written by the package.
+     *
+     * @since 1.0.0
+     */
+    function perfFlushPageCache(): int
+    {
+        return performance()->flushPageCache();
+    }
+}
+
+if ( ! function_exists( 'perfInvalidateFragmentsByTag' ) ) {
+    /**
+     * Invalidates fragment cache entries registered under the given tag.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $tag  Tag name.
+     */
+    function perfInvalidateFragmentsByTag( string $tag ): int
+    {
+        return performance()->invalidateFragmentsByTag( $tag );
+    }
+}
+
+if ( ! function_exists( 'perfWarmPageCache' ) ) {
+    /**
+     * Warms the page cache for the given URLs.
+     *
+     * @since 1.0.0
+     *
+     * @param  array<int, string>  $urls  URLs to warm.
+     *
+     * @return array<string, array{status: int|null, ok: bool, error: string|null}>
+     */
+    function perfWarmPageCache( array $urls ): array
+    {
+        return performance()->warmPageCache( $urls );
+    }
+}
+
 if ( ! function_exists( 'perfRecordMetric' ) ) {
     /**
      * Records a single performance metric sample.
@@ -207,7 +280,7 @@ if ( ! function_exists( 'perfRecordMetric' ) ) {
     }
 }
 
-if ( ! function_exists( 'perfGetRecommendations')) {
+if ( ! function_exists( 'perfGetRecommendations' ) ) {
     /**
      * Returns recommended performance actions for the current configuration.
      *
