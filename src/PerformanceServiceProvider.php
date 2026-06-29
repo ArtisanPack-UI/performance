@@ -19,6 +19,7 @@ declare( strict_types=1 );
 namespace ArtisanPackUI\Performance;
 
 use ArtisanPackUI\Performance\Cache\CacheInvalidator;
+use ArtisanPackUI\Performance\Cache\CacheStrategyManager;
 use ArtisanPackUI\Performance\Cache\FragmentCache;
 use ArtisanPackUI\Performance\Cache\PageCacheManager;
 use ArtisanPackUI\Performance\Console\Commands\GenerateCriticalCssCommand;
@@ -26,6 +27,8 @@ use ArtisanPackUI\Performance\Console\Commands\GenerateWebPCommand;
 use ArtisanPackUI\Performance\Console\Commands\PurgeCacheCommand;
 use ArtisanPackUI\Performance\Console\Commands\WarmCacheCommand;
 use ArtisanPackUI\Performance\Css\CriticalCssExtractor;
+use ArtisanPackUI\Performance\Database\N1Detector;
+use ArtisanPackUI\Performance\Database\QueryAnalyzer;
 use ArtisanPackUI\Performance\Images\DominantColorExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use ArtisanPackUI\Performance\JavaScript\ScriptManager;
@@ -138,6 +141,18 @@ class PerformanceServiceProvider extends ServiceProvider
             );
         } );
 
+        $this->app->singleton( CacheStrategyManager::class, function () {
+            return new CacheStrategyManager;
+        } );
+
+        $this->app->singleton( QueryAnalyzer::class, function () {
+            return new QueryAnalyzer;
+        } );
+
+        $this->app->singleton( N1Detector::class, function ( $app ) {
+            return new N1Detector( $app->make( QueryAnalyzer::class ) );
+        } );
+
         $this->app->singleton( 'performance', function ( $app ) {
             return new PerformanceService(
                 $app->make( ImageService::class ),
@@ -205,6 +220,8 @@ class PerformanceServiceProvider extends ServiceProvider
             $sandbox = $event->sandbox ?? $this->app;
             $sandbox->make( PrefetchManager::class )->flush();
             $sandbox->make( PrerenderManager::class )->flush();
+            $sandbox->make( QueryAnalyzer::class )->reset();
+            $sandbox->make( N1Detector::class )->reset();
         } );
     }
 
@@ -542,6 +559,36 @@ class PerformanceServiceProvider extends ServiceProvider
     protected function registerEventListeners(): void
     {
         // Bindings registered by later phases (image, monitoring, alerts).
+        $this->bootDatabaseObservers();
+    }
+
+    /**
+     * Subscribes the QueryAnalyzer and N1Detector to DB events.
+     *
+     * Reads the relevant feature flags so apps that haven't opted into
+     * `query_optimization` pay nothing — no listener bound, no events
+     * fired. The detector also re-reads its own enabled flag inside
+     * `enable()`, so toggling at runtime still works.
+     *
+     * @since 1.0.0
+     */
+    protected function bootDatabaseObservers(): void
+    {
+        if ( $this->app->runningUnitTests() ) {
+            // Tests opt into the observers explicitly so the listener
+            // chain is exactly the surface the test under test cares
+            // about — otherwise every test would inherit a listener
+            // that fires unrelated events.
+            return;
+        }
+
+        if ( (bool) config( 'artisanpack.performance.features.query_optimization', false ) ) {
+            $this->app->make( QueryAnalyzer::class )->enableQueryLogging();
+        }
+
+        if ( (bool) config( 'artisanpack.performance.database.n1_detection.enabled', false ) ) {
+            $this->app->make( N1Detector::class )->enable();
+        }
     }
 
     /**
