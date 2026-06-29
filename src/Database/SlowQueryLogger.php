@@ -342,8 +342,11 @@ class SlowQueryLogger
     /**
      * Reports whether a file path belongs to the framework or this package.
      *
-     * The check is path-substring based — a single `str_contains` per
-     * needle is cheap and side-steps OS-specific separator quirks.
+     * The package root is resolved dynamically from `__DIR__` so frames
+     * still get skipped when the package is installed at a non-standard
+     * path (e.g. a symlinked dev checkout that lives outside `vendor/`).
+     * The framework needles handle Laravel + Illuminate installs at the
+     * conventional Composer locations.
      *
      * @since 1.0.0
      *
@@ -351,11 +354,16 @@ class SlowQueryLogger
      */
     protected function isFrameworkFrame( string $file ): bool
     {
+        $packageRoot = $this->packageRoot();
+
+        if ( '' !== $packageRoot && str_starts_with( $file, $packageRoot ) ) {
+            return true;
+        }
+
         foreach ( [
             DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'laravel' . DIRECTORY_SEPARATOR,
             DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'illuminate' . DIRECTORY_SEPARATOR,
-            DIRECTORY_SEPARATOR . 'artisanpack-ui' . DIRECTORY_SEPARATOR . 'performance' . DIRECTORY_SEPARATOR,
-            DIRECTORY_SEPARATOR . 'ArtisanPackUI' . DIRECTORY_SEPARATOR . 'Performance' . DIRECTORY_SEPARATOR,
+            DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'symfony' . DIRECTORY_SEPARATOR,
         ] as $needle ) {
             if ( str_contains( $file, $needle ) ) {
                 return true;
@@ -363,6 +371,32 @@ class SlowQueryLogger
         }
 
         return false;
+    }
+
+    /**
+     * Resolves the package's `src/` directory from this file's location.
+     *
+     * Only `src/` is treated as "package code" — tests / fixtures /
+     * documentation files live outside `src/` and are not skipped, so
+     * the test suite can still exercise caller resolution end-to-end.
+     * Memoized via a static so the realpath() call only happens once
+     * per worker.
+     *
+     * @since 1.0.0
+     */
+    protected function packageRoot(): string
+    {
+        static $root = null;
+
+        if ( null !== $root ) {
+            return $root;
+        }
+
+        $resolved = realpath( __DIR__ . DIRECTORY_SEPARATOR . '..' );
+
+        $root = false === $resolved ? '' : $resolved . DIRECTORY_SEPARATOR;
+
+        return $root;
     }
 
     /**

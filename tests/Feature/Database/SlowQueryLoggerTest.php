@@ -66,13 +66,18 @@ it( 'dispatches SlowQueryDetected with the original query and bindings', functio
     } );
 } );
 
-it( 'captures a caller file and line that skip framework frames', function (): void {
+it( 'captures a caller file and line that skip framework + package frames', function (): void {
     $logger = new SlowQueryLogger( new QueryAnalyzer );
 
     $payload = $logger->record( new QueryExecuted( 'SELECT 1', [], 250.0, DB::connection() ) );
 
     expect( $payload['file'] )->not->toBeNull();
     expect( $payload['line'] )->toBeGreaterThan( 0 );
+    // The caller must NOT be a file inside the package — otherwise the
+    // dashboard would point developers back at the logger / analyzer
+    // instead of their own controller / model code.
+    expect( $payload['file'] )->not->toContain( 'src/Database/SlowQueryLogger.php' );
+    expect( $payload['file'] )->not->toContain( 'src/Database/QueryAnalyzer.php' );
 } );
 
 it( 'persists to the database when store_in_database is enabled', function (): void {
