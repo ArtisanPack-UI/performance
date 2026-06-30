@@ -25,13 +25,17 @@ use ArtisanPackUI\Performance\Cache\PageCacheManager;
 use ArtisanPackUI\Performance\Console\Commands\GenerateCriticalCssCommand;
 use ArtisanPackUI\Performance\Console\Commands\GenerateWebPCommand;
 use ArtisanPackUI\Performance\Console\Commands\PurgeCacheCommand;
+use ArtisanPackUI\Performance\Console\Commands\SuggestIndexesCommand;
 use ArtisanPackUI\Performance\Console\Commands\WarmCacheCommand;
 use ArtisanPackUI\Performance\Css\CriticalCssExtractor;
+use ArtisanPackUI\Performance\Database\IndexSuggester;
 use ArtisanPackUI\Performance\Database\N1Detector;
 use ArtisanPackUI\Performance\Database\QueryAnalyzer;
+use ArtisanPackUI\Performance\Database\SlowQueryLogger;
 use ArtisanPackUI\Performance\Images\DominantColorExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use ArtisanPackUI\Performance\JavaScript\ScriptManager;
+use ArtisanPackUI\Performance\Output\HtmlMinifier;
 use ArtisanPackUI\Performance\Output\ResourceHintInjector;
 use ArtisanPackUI\Performance\Services\EmbedOptimizer;
 use ArtisanPackUI\Performance\Services\Image\FormatConverter;
@@ -153,6 +157,18 @@ class PerformanceServiceProvider extends ServiceProvider
             return new N1Detector( $app->make( QueryAnalyzer::class ) );
         } );
 
+        $this->app->singleton( SlowQueryLogger::class, function ( $app ) {
+            return new SlowQueryLogger( $app->make( QueryAnalyzer::class ) );
+        } );
+
+        $this->app->singleton( IndexSuggester::class, function () {
+            return new IndexSuggester;
+        } );
+
+        $this->app->singleton( HtmlMinifier::class, function () {
+            return new HtmlMinifier;
+        } );
+
         $this->app->singleton( 'performance', function ( $app ) {
             return new PerformanceService(
                 $app->make( ImageService::class ),
@@ -262,6 +278,7 @@ class PerformanceServiceProvider extends ServiceProvider
                 GenerateCriticalCssCommand::class,
                 WarmCacheCommand::class,
                 PurgeCacheCommand::class,
+                SuggestIndexesCommand::class,
             ] );
         }
     }
@@ -588,6 +605,10 @@ class PerformanceServiceProvider extends ServiceProvider
 
         if ( (bool) config( 'artisanpack.performance.database.n1_detection.enabled', false ) ) {
             $this->app->make( N1Detector::class )->enable();
+        }
+
+        if ( (bool) config( 'artisanpack.performance.database.slow_query_logging.enabled', false ) ) {
+            $this->app->make( SlowQueryLogger::class )->enable();
         }
     }
 
