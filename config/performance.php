@@ -313,6 +313,7 @@ return [
     'monitoring' => [
         'enabled' => true,
         'collect_web_vitals' => true,
+        'endpoint' => env('PERF_MONITORING_ENDPOINT', '/api/performance/metrics'),
         'sample_rate' => 100,
         'store_raw_metrics' => false,
         'aggregation_interval' => 'hourly',
