@@ -32,10 +32,13 @@ use ArtisanPackUI\Performance\Database\IndexSuggester;
 use ArtisanPackUI\Performance\Database\N1Detector;
 use ArtisanPackUI\Performance\Database\QueryAnalyzer;
 use ArtisanPackUI\Performance\Database\SlowQueryLogger;
+use ArtisanPackUI\Performance\Http\Middleware\EarlyHints;
+use ArtisanPackUI\Performance\Http\Middleware\MinifyHtml;
 use ArtisanPackUI\Performance\Images\DominantColorExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use ArtisanPackUI\Performance\JavaScript\ScriptManager;
 use ArtisanPackUI\Performance\Output\HtmlMinifier;
+use ArtisanPackUI\Performance\Output\OutputBuffer;
 use ArtisanPackUI\Performance\Output\ResourceHintInjector;
 use ArtisanPackUI\Performance\Services\EmbedOptimizer;
 use ArtisanPackUI\Performance\Services\Image\FormatConverter;
@@ -44,6 +47,7 @@ use ArtisanPackUI\Performance\Services\PerformanceService;
 use ArtisanPackUI\Performance\Speculative\PrefetchManager;
 use ArtisanPackUI\Performance\Speculative\PrerenderManager;
 use ArtisanPackUI\Performance\Speculative\SpeculativeRulesGenerator;
+use ArtisanPackUI\Performance\Support\MonitorDirectives;
 use ArtisanPackUI\Performance\Support\ResourceHintDirectives;
 use ArtisanPackUI\Performance\Support\ScriptDirectives;
 use ArtisanPackUI\Performance\Support\SpeculativeDirectives;
@@ -169,6 +173,18 @@ class PerformanceServiceProvider extends ServiceProvider
             return new HtmlMinifier;
         } );
 
+        $this->app->singleton( OutputBuffer::class, function () {
+            return new OutputBuffer;
+        } );
+
+        $this->app->singleton( MinifyHtml::class, function ( $app ) {
+            return new MinifyHtml( $app->make( HtmlMinifier::class ) );
+        } );
+
+        $this->app->singleton( EarlyHints::class, function ( $app ) {
+            return new EarlyHints( $app->make( ResourceHintInjector::class ) );
+        } );
+
         $this->app->singleton( 'performance', function ( $app ) {
             return new PerformanceService(
                 $app->make( ImageService::class ),
@@ -203,6 +219,7 @@ class PerformanceServiceProvider extends ServiceProvider
         $this->loadViewsFrom( __DIR__ . '/../resources/views', 'performance' );
         $this->loadBladeComponents();
         $this->registerBladeDirectives();
+        $this->registerMiddlewareAliases();
         $this->registerCriticalCssSources();
         $this->registerEventListeners();
         $this->registerOctaneResetHooks();
@@ -238,7 +255,32 @@ class PerformanceServiceProvider extends ServiceProvider
             $sandbox->make( PrerenderManager::class )->flush();
             $sandbox->make( QueryAnalyzer::class )->reset();
             $sandbox->make( N1Detector::class )->reset();
+            $sandbox->make( OutputBuffer::class )->reset();
         } );
+    }
+
+    /**
+     * Registers route-middleware aliases for the package's HTTP middlewares.
+     *
+     * `perf.minify` and `perf.early-hints` give application route
+     * groups a stable, namespaced shorthand that survives between
+     * package releases — important because the FQCNs (which include
+     * `Http\Middleware`) would otherwise leak into the application's
+     * routing tables and require coordinated updates if the class
+     * ever moved.
+     *
+     * @since 1.0.0
+     */
+    protected function registerMiddlewareAliases(): void
+    {
+        $router = $this->app['router'] ?? null;
+
+        if ( null === $router || ! method_exists( $router, 'aliasMiddleware' ) ) {
+            return;
+        }
+
+        $router->aliasMiddleware( 'perf.minify', MinifyHtml::class );
+        $router->aliasMiddleware( 'perf.early-hints', EarlyHints::class );
     }
 
     /**
@@ -442,6 +484,27 @@ class PerformanceServiceProvider extends ServiceProvider
                 . 'unset($__perfFragmentArgs, $__perfFragmentFrame, $__perfFragmentHit); ?>',
                 $argument,
                 FragmentCache::class,
+            );
+        } );
+
+        // Performance monitor directive. With no argument the directive
+        // emits the default web-vitals bootstrap; with a single
+        // argument the expression is forwarded verbatim so callers can
+        // pass per-page configuration overrides inline (e.g.
+        // `@perfMonitor(['extra' => ['tenant' => $tenant->id]])`).
+        $monitorHelper = MonitorDirectives::class;
+
+        Blade::directive( 'perfMonitor', static function ( string $expression ) use ( $monitorHelper ): string {
+            $argument = trim( $expression );
+
+            if ( '' === $argument ) {
+                return sprintf( '<?php echo \\%s::perfMonitor(); ?>', $monitorHelper );
+            }
+
+            return sprintf(
+                '<?php echo \\%s::perfMonitor(%s); ?>',
+                $monitorHelper,
+                $argument,
             );
         } );
 
