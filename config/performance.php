@@ -376,6 +376,7 @@ return [
         'enabled' => true,
         'api_prefix' => 'api/performance',
         'api_middleware' => ['api'],
+        'api_throttle' => env('PERF_API_THROTTLE', '60,1'),
     ],
 
     /*

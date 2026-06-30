@@ -6,6 +6,7 @@ namespace Tests;
 
 use ArtisanPackUI\Performance\PerformanceServiceProvider;
 use Illuminate\Foundation\Application;
+use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 
 /**
@@ -37,6 +38,7 @@ abstract class TestCase extends BaseTestCase
     protected function getPackageProviders( $app ): array
     {
         return [
+            LivewireServiceProvider::class,
             PerformanceServiceProvider::class,
         ];
     }
@@ -60,6 +62,6 @@ abstract class TestCase extends BaseTestCase
             'database'                => ':memory:',
             'prefix'                  => '',
             'foreign_key_constraints' => true,
-        ]);
+        ] );
     }
 }
