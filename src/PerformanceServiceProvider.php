@@ -19,9 +19,11 @@ declare( strict_types=1 );
 namespace ArtisanPackUI\Performance;
 
 use ArtisanPackUI\Performance\Cache\CacheInvalidator;
+use ArtisanPackUI\Performance\Cache\CacheStatistics;
 use ArtisanPackUI\Performance\Cache\CacheStrategyManager;
 use ArtisanPackUI\Performance\Cache\FragmentCache;
 use ArtisanPackUI\Performance\Cache\PageCacheManager;
+use ArtisanPackUI\Performance\Console\Commands\AggregateMetricsCommand;
 use ArtisanPackUI\Performance\Console\Commands\GenerateCriticalCssCommand;
 use ArtisanPackUI\Performance\Console\Commands\GenerateWebPCommand;
 use ArtisanPackUI\Performance\Console\Commands\PurgeCacheCommand;
@@ -37,6 +39,10 @@ use ArtisanPackUI\Performance\Http\Middleware\MinifyHtml;
 use ArtisanPackUI\Performance\Images\DominantColorExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use ArtisanPackUI\Performance\JavaScript\ScriptManager;
+use ArtisanPackUI\Performance\Livewire\CacheManager as CacheManagerComponent;
+use ArtisanPackUI\Performance\Livewire\MetricsChart as MetricsChartComponent;
+use ArtisanPackUI\Performance\Livewire\PerformanceDashboard as PerformanceDashboardComponent;
+use ArtisanPackUI\Performance\Monitoring\MetricsAggregator;
 use ArtisanPackUI\Performance\Output\HtmlMinifier;
 use ArtisanPackUI\Performance\Output\OutputBuffer;
 use ArtisanPackUI\Performance\Output\ResourceHintInjector;
@@ -47,6 +53,7 @@ use ArtisanPackUI\Performance\Services\PerformanceService;
 use ArtisanPackUI\Performance\Speculative\PrefetchManager;
 use ArtisanPackUI\Performance\Speculative\PrerenderManager;
 use ArtisanPackUI\Performance\Speculative\SpeculativeRulesGenerator;
+use ArtisanPackUI\Performance\Support\MetricsChartDirectives;
 use ArtisanPackUI\Performance\Support\MonitorDirectives;
 use ArtisanPackUI\Performance\Support\ResourceHintDirectives;
 use ArtisanPackUI\Performance\Support\ScriptDirectives;
@@ -61,6 +68,7 @@ use ArtisanPackUI\Performance\View\Components\ResourceHints;
 use ArtisanPackUI\Performance\View\Components\ResponsiveImage;
 use ArtisanPackUI\Performance\View\Components\SpeculativeRules;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -153,6 +161,14 @@ class PerformanceServiceProvider extends ServiceProvider
             return new CacheStrategyManager;
         } );
 
+        $this->app->singleton( CacheStatistics::class, function () {
+            return new CacheStatistics;
+        } );
+
+        $this->app->singleton( MetricsAggregator::class, function () {
+            return new MetricsAggregator;
+        } );
+
         $this->app->singleton( QueryAnalyzer::class, function () {
             return new QueryAnalyzer;
         } );
@@ -219,11 +235,13 @@ class PerformanceServiceProvider extends ServiceProvider
         $this->loadViewsFrom( __DIR__ . '/../resources/views', 'performance' );
         $this->loadBladeComponents();
         $this->registerBladeDirectives();
+        $this->registerLivewireComponents();
         $this->registerMiddlewareAliases();
         $this->registerCriticalCssSources();
         $this->registerEventListeners();
         $this->registerOctaneResetHooks();
         $this->registerCommands();
+        $this->registerRoutes();
         $this->publishConfiguration();
     }
 
@@ -321,8 +339,60 @@ class PerformanceServiceProvider extends ServiceProvider
                 WarmCacheCommand::class,
                 PurgeCacheCommand::class,
                 SuggestIndexesCommand::class,
+                AggregateMetricsCommand::class,
             ] );
         }
+    }
+
+    /**
+     * Registers the package's Livewire components.
+     *
+     * The components are registered under the `perf-` prefix so they don't
+     * clash with application Livewire components named `dashboard` or
+     * `cache-manager`. Registration is a no-op when Livewire is not
+     * installed — applications using the package without the dashboard
+     * still load the rest of the surface normally.
+     *
+     * @since 1.0.0
+     */
+    protected function registerLivewireComponents(): void
+    {
+        if ( ! class_exists( '\Livewire\Livewire' ) ) {
+            return;
+        }
+
+        \Livewire\Livewire::component( 'perf-performance-dashboard', PerformanceDashboardComponent::class );
+        \Livewire\Livewire::component( 'perf-metrics-chart', MetricsChartComponent::class );
+        \Livewire\Livewire::component( 'perf-cache-manager', CacheManagerComponent::class );
+    }
+
+    /**
+     * Registers the package's HTTP routes.
+     *
+     * The API surface is gated by `routes.enabled` so applications that
+     * only consume the optimization helpers can disable the dashboard
+     * endpoints entirely. The configured `api_prefix` is normalized to a
+     * single leading segment so callers can supply either `api/perf` or
+     * `/api/perf` without producing a double-slashed URI.
+     *
+     * @since 1.0.0
+     */
+    protected function registerRoutes(): void
+    {
+        if ( false === (bool) config( 'artisanpack.performance.routes.enabled', true ) ) {
+            return;
+        }
+
+        $prefix     = trim( (string) config( 'artisanpack.performance.routes.api_prefix', 'api/performance' ), '/' );
+        $middleware = (array) config( 'artisanpack.performance.routes.api_middleware', [ 'api' ] );
+        $throttle   = (string) config( 'artisanpack.performance.routes.api_throttle', '60,1' );
+
+        $middleware[] = 'throttle:' . $throttle;
+
+        Route::middleware( $middleware )
+            ->prefix( $prefix )
+            ->name( 'artisanpack.performance.api.' )
+            ->group( __DIR__ . '/../routes/api.php' );
     }
 
     /**
@@ -504,6 +574,28 @@ class PerformanceServiceProvider extends ServiceProvider
             return sprintf(
                 '<?php echo \\%s::perfMonitor(%s); ?>',
                 $monitorHelper,
+                $argument,
+            );
+        } );
+
+        // Metrics chart assets directive. Emits the Chart.js loader plus
+        // the package's small bootstrap module that binds Chart.js to the
+        // `[data-metrics-chart]` containers rendered by the MetricsChart
+        // Livewire component. Optional argument forwards overrides
+        // (e.g. `@perfMetricsChartAssets(['libraryUrl' => ''])` when the
+        // host page already loads Chart.js).
+        $metricsChartHelper = MetricsChartDirectives::class;
+
+        Blade::directive( 'perfMetricsChartAssets', static function ( string $expression ) use ( $metricsChartHelper ): string {
+            $argument = trim( $expression );
+
+            if ( '' === $argument ) {
+                return sprintf( '<?php echo \\%s::perfMetricsChartAssets(); ?>', $metricsChartHelper );
+            }
+
+            return sprintf(
+                '<?php echo \\%s::perfMetricsChartAssets(%s); ?>',
+                $metricsChartHelper,
                 $argument,
             );
         } );

@@ -1,0 +1,446 @@
+<?php
+
+/**
+ * Performance dashboard Livewire component.
+ *
+ * Top-level surface for the package's admin UI. Composes a date-range
+ * picker, a tab strip, and the per-tab summary data sourced from the
+ * aggregated `performance_metrics` table and the cache statistics
+ * helpers. The component is read-only; mutating cache actions live on
+ * the bundled `CacheManager` component the Cache tab mounts.
+ *
+ *
+ * @author     Jacob Martella <me@jacobmartella.com>
+ *
+ * @since      1.0.0
+ */
+
+declare( strict_types=1 );
+
+namespace ArtisanPackUI\Performance\Livewire;
+
+use ArtisanPackUI\Performance\Cache\CacheStatistics;
+use ArtisanPackUI\Performance\Models\PerformanceMetric;
+use ArtisanPackUI\Performance\Models\SlowQuery;
+use ArtisanPackUI\Performance\Monitoring\WebVitals;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Livewire\Attributes\Url;
+use Livewire\Component;
+
+/**
+ * Performance dashboard component class.
+ *
+ *
+ * @since      1.0.0
+ */
+class PerformanceDashboard extends Component
+{
+    /**
+     * Date ranges the picker offers.
+     *
+     * Expressed as `key => days` so the query side can convert a range
+     * into an `>= today - days` clause without re-parsing the labels.
+     *
+     * @since 1.0.0
+     *
+     * @var array<string, int>
+     */
+    public const RANGE_DAYS = [
+        '24h' => 1,
+        '7d'  => 7,
+        '30d' => 30,
+        '90d' => 90,
+    ];
+
+    /**
+     * Tab keys the dashboard exposes.
+     *
+     * @since 1.0.0
+     *
+     * @var array<int, string>
+     */
+    public const TABS = [
+        'overview',
+        'pages',
+        'images',
+        'cache',
+        'queries',
+        'recommendations',
+    ];
+
+    /**
+     * The currently selected date range key.
+     *
+     * @since 1.0.0
+     */
+    #[Url( as: 'range', history: true )]
+    public string $dateRange = '7d';
+
+    /**
+     * The currently active tab key.
+     *
+     * @since 1.0.0
+     */
+    #[Url( as: 'tab', history: true )]
+    public string $activeTab = 'overview';
+
+    /**
+     * Memoized overview rollup for the current render cycle.
+     *
+     * Lets `buildRecommendations()` reuse the rows `buildOverview()`
+     * already computed without re-issuing the aggregate query — Livewire
+     * components are short-lived (one per server request), so the cache
+     * lives exactly as long as a single render and cannot serve stale
+     * data across user actions.
+     *
+     * @since 1.0.0
+     *
+     * @var array<int, array{metric: string, p75: float|null, sample_count: int, status: string}>|null
+     */
+    protected ?array $overviewCache = null;
+
+    /**
+     * Mounts the component, applying the default range when none is supplied.
+     *
+     * Validation is intentionally loose: an unknown range or tab is
+     * coerced to the default so deep-linked URLs from older builds never
+     * 500. The same coercion happens on every render so an external
+     * URL-manipulation bug cannot park the component in a bad state.
+     *
+     * The `$defaultDateRange` host prop is honored only when the URL
+     * did not already carry a `range` query string — otherwise the
+     * `#[Url]` restoration would be silently overwritten on every
+     * reload, defeating the history binding.
+     *
+     * @since 1.0.0
+     *
+     * @param  Request|null  $request  Bound by Livewire to inspect the URL query.
+     * @param  string|null  $defaultDateRange  Optional override for the initial range.
+     */
+    public function mount( ?Request $request = null, ?string $defaultDateRange = null ): void
+    {
+        $rangeFromUrl = null === $request ? null : $request->query( 'range' );
+        $hasUrlRange  = is_string( $rangeFromUrl ) && '' !== $rangeFromUrl;
+
+        if ( ! $hasUrlRange && null !== $defaultDateRange && '' !== $defaultDateRange ) {
+            $this->dateRange = $defaultDateRange;
+        }
+
+        $this->dateRange = $this->resolveRange( $this->dateRange );
+        $this->activeTab = $this->resolveTab( $this->activeTab );
+    }
+
+    /**
+     * Switches the active tab.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $tab  Tab key.
+     */
+    public function setTab( string $tab ): void
+    {
+        $this->activeTab = $this->resolveTab( $tab );
+    }
+
+    /**
+     * Switches the active date range.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $range  Range key (`24h`, `7d`, `30d`, `90d`).
+     */
+    public function setDateRange( string $range ): void
+    {
+        $this->dateRange = $this->resolveRange( $range );
+    }
+
+    /**
+     * Forces a re-render so subordinate components reload data.
+     *
+     * @since 1.0.0
+     */
+    public function refreshMetrics(): void
+    {
+        $this->dispatch( 'performance-dashboard:refreshed' );
+    }
+
+    /**
+     * Renders the dashboard template.
+     *
+     * Only the active tab's payload is computed — the other tabs
+     * resolve to empty defaults until the user switches to them. On
+     * a real dataset this is roughly a 5x query reduction per render
+     * compared to eager-building every tab. The `overview` payload
+     * is always built when the Recommendations tab is active because
+     * it derives its list from the overview rollup.
+     *
+     * @since 1.0.0
+     */
+    public function render(): View
+    {
+        $overview        = [];
+        $pages           = [];
+        $queries         = [];
+        $cacheSummary    = [ 'page' => [ 'entries' => 0 ], 'fragment' => [ 'entries' => 0, 'tags' => 0 ] ];
+        $recommendations = [];
+
+        if ( 'overview' === $this->activeTab ) {
+            $overview = $this->overview();
+        } elseif ( 'pages' === $this->activeTab ) {
+            $pages = $this->buildPagesBreakdown();
+        } elseif ( 'queries' === $this->activeTab ) {
+            $queries = $this->buildQuerySummary();
+        } elseif ( 'cache' === $this->activeTab ) {
+            $cacheSummary = $this->buildCacheSummary();
+        } elseif ( 'recommendations' === $this->activeTab ) {
+            $recommendations = $this->buildRecommendations();
+        }
+
+        return view( 'performance::livewire.performance-dashboard', [
+            'overview'        => $overview,
+            'pages'           => $pages,
+            'queries'         => $queries,
+            'cacheSummary'    => $cacheSummary,
+            'recommendations' => $recommendations,
+            'ranges'          => array_keys( self::RANGE_DAYS ),
+            'tabs'            => self::TABS,
+        ] );
+    }
+
+    /**
+     * Returns the memoized overview payload, computing it on first call.
+     *
+     * Both the Overview tab and the Recommendations tab need the same
+     * rollup; memoization avoids a second copy of the aggregate query
+     * within a single render cycle.
+     *
+     * @since 1.0.0
+     *
+     * @return array<int, array{metric: string, p75: float|null, sample_count: int, status: string}>
+     */
+    protected function overview(): array
+    {
+        return $this->overviewCache ??= $this->buildOverview();
+    }
+
+    /**
+     * Builds the Overview tab payload — one row per Core Web Vital.
+     *
+     * Each metric's headline number is the sample-weighted mean of its
+     * bucket p75s (`SUM(p75 * sample_count) / SUM(sample_count)`), not a
+     * straight `AVG(p75)`. A straight average over device/connection
+     * buckets weights every bucket equally — a 50-sample desktop p75
+     * pulls the headline as hard as a 50,000-sample mobile p75 — and
+     * the result is a value no actual population experienced. The
+     * weighted form is still a mean of percentiles (re-percentiling
+     * raw samples would be the only fully-correct rollup), but it at
+     * least approximates the population-wide central tendency.
+     *
+     * @since 1.0.0
+     *
+     * @return array<int, array{metric: string, p75: float|null, sample_count: int, status: string}>
+     */
+    protected function buildOverview(): array
+    {
+        $rows = PerformanceMetric::query()
+            ->whereBetween( 'date', [ $this->startDate(), $this->endDate() ] )
+            ->selectRaw( 'metric, SUM(p75 * sample_count) as weighted_p75_sum, SUM(sample_count) as sample_count' )
+            ->groupBy( 'metric' )
+            ->get();
+
+        $out = [];
+
+        foreach ( $rows as $row ) {
+            $metric = (string) $row->metric;
+            $count  = (int) $row->sample_count;
+            $p75    = $count > 0 ? (float) $row->weighted_p75_sum / $count : null;
+
+            $out[] = [
+                'metric'       => $metric,
+                'p75'          => $p75,
+                'sample_count' => $count,
+                'status'       => WebVitals::classify( $metric, $p75 ),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Builds the Pages tab payload — per-route p75 rollup.
+     *
+     * Mirrors the weighting strategy in `buildOverview()` — each row's
+     * p75 is the sample-weighted mean of the per-bucket p75s for that
+     * (route, metric) pair, so a route with a tiny mobile/4g cohort
+     * doesn't pull a route-level rollup out of alignment with the
+     * dominant cohort. Ordering by the weighted mean keeps the
+     * "worst pages" list ranked by what the typical user actually
+     * sees, not by an unweighted outlier.
+     *
+     * @since 1.0.0
+     *
+     * @return array<int, array{route: string|null, metric: string, p75: float, sample_count: int}>
+     */
+    protected function buildPagesBreakdown(): array
+    {
+        return PerformanceMetric::query()
+            ->whereBetween( 'date', [ $this->startDate(), $this->endDate() ] )
+            ->whereNotNull( 'route' )
+            ->selectRaw( 'route, metric, SUM(p75 * sample_count) / NULLIF(SUM(sample_count), 0) as p75, SUM(sample_count) as sample_count' )
+            ->groupBy( 'route', 'metric' )
+            ->orderByDesc( 'p75' )
+            ->limit( 25 )
+            ->get()
+            ->map( static fn ( $row ): array => [
+                'route'        => $row->route,
+                'metric'       => (string) $row->metric,
+                'p75'          => (float) $row->p75,
+                'sample_count' => (int) $row->sample_count,
+            ] )
+            ->all();
+    }
+
+    /**
+     * Builds the Queries tab payload.
+     *
+     * @since 1.0.0
+     *
+     * @return array<int, array{query: string, time_ms: float, route: string|null}>
+     */
+    protected function buildQuerySummary(): array
+    {
+        if ( ! class_exists( SlowQuery::class ) ) {
+            return [];
+        }
+
+        return SlowQuery::query()
+            ->where( 'created_at', '>=', $this->startDate()->startOfDay() )
+            ->orderByDesc( 'time_ms' )
+            ->limit( 25 )
+            ->get( [ 'query_normalized', 'time_ms', 'route' ] )
+            ->map( static fn ( SlowQuery $row ): array => [
+                'query'   => $row->query_normalized,
+                'time_ms' => (float) $row->time_ms,
+                'route'   => $row->route,
+            ] )
+            ->all();
+    }
+
+    /**
+     * Builds the Cache tab summary (counts only — actions live on CacheManager).
+     *
+     * @since 1.0.0
+     *
+     * @return array{page: array<string, mixed>, fragment: array<string, mixed>}
+     */
+    protected function buildCacheSummary(): array
+    {
+        $statistics = app( CacheStatistics::class );
+
+        return [
+            'page'     => $statistics->pageSummary(),
+            'fragment' => $statistics->fragmentSummary(),
+        ];
+    }
+
+    /**
+     * Builds the Recommendations tab payload.
+     *
+     * The list is derived from the same data shown in the Overview tab —
+     * any metric whose rolling p75 lands outside the "good" band becomes
+     * an actionable item with a brief remediation hint. This keeps the
+     * recommendations grounded in real data instead of a static list.
+     *
+     * @since 1.0.0
+     *
+     * @return array<int, array{title: string, severity: string, body: string}>
+     */
+    protected function buildRecommendations(): array
+    {
+        $items = [];
+
+        foreach ( $this->overview() as $row ) {
+            if ( 'poor' !== $row['status'] && 'needs-improvement' !== $row['status'] ) {
+                continue;
+            }
+
+            $items[] = [
+                'title'    => 'poor' === $row['status']
+                    ? (string) __( ':metric is poor', [ 'metric' => $row['metric'] ] )
+                    : (string) __( ':metric needs improvement', [ 'metric' => $row['metric'] ] ),
+                'severity' => 'poor' === $row['status'] ? 'high' : 'medium',
+                'body'     => $this->remediationFor( $row['metric'] ),
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * Returns a short remediation hint for the given metric.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $metric  Metric name.
+     */
+    protected function remediationFor( string $metric ): string
+    {
+        return match ( $metric ) {
+            'LCP'   => (string) __( 'Optimize the largest element above the fold: preload its image, prioritize its CSS, and serve modern formats.' ),
+            'INP'   => (string) __( 'Reduce long tasks on the main thread and split heavy JavaScript into deferred or async chunks.' ),
+            'CLS'   => (string) __( 'Reserve space for images, ads, and embeds; avoid inserting content above existing content after load.' ),
+            'FID'   => (string) __( 'Defer non-critical JavaScript and split long tasks so the main thread stays responsive to early input.' ),
+            'TTFB'  => (string) __( 'Enable page caching, tune database queries, and ensure the origin responds quickly to first byte requests.' ),
+            'FCP'   => (string) __( 'Inline critical CSS, preconnect to required origins, and reduce blocking resources in the document head.' ),
+            default => (string) __( 'Review the metric definition and audit relevant page resources.' ),
+        };
+    }
+
+    /**
+     * Returns the inclusive start date for the current range.
+     *
+     * @since 1.0.0
+     */
+    protected function startDate(): Carbon
+    {
+        $days = self::RANGE_DAYS[ $this->dateRange ] ?? self::RANGE_DAYS['7d'];
+
+        return Carbon::today()->subDays( $days - 1 );
+    }
+
+    /**
+     * Returns the inclusive end date for the current range.
+     *
+     * @since 1.0.0
+     */
+    protected function endDate(): Carbon
+    {
+        return Carbon::today();
+    }
+
+    /**
+     * Normalizes the supplied range key.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $range  Candidate range key.
+     */
+    protected function resolveRange( string $range ): string
+    {
+        return isset( self::RANGE_DAYS[ $range ] ) ? $range : '7d';
+    }
+
+    /**
+     * Normalizes the supplied tab key.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $tab  Candidate tab key.
+     */
+    protected function resolveTab( string $tab ): string
+    {
+        return in_array( $tab, self::TABS, true ) ? $tab : 'overview';
+    }
+}
