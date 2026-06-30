@@ -84,9 +84,10 @@ class DetectSlowQueries
     /**
      * Handles the request.
      *
-     * Detection is enabled BEFORE the next handler runs so the queries
-     * issued by controllers are observed from the very first one. The
-     * route name is stamped onto the N+1 detector at the same time so
+     * Each detector is enabled INDEPENDENTLY based on its own feature
+     * flag so users who opted into one path (e.g. just slow-query
+     * logging) don't pay the DB::listen + closure cost of the others.
+     * The route name is stamped onto the N+1 detector when enabled so
      * dispatched events carry route context — the route binding has
      * been resolved by the time the route-stack middleware runs.
      *
@@ -97,41 +98,66 @@ class DetectSlowQueries
      */
     public function handle( Request $request, Closure $next ): Response
     {
-        if ( ! $this->shouldDetect( $request ) ) {
+        if ( $this->matchesExcludedRoute( $request ) ) {
             return $next( $request );
         }
 
-        $this->analyzer->enableQueryLogging();
-        $this->n1Detector->enable();
-        $this->slowQueryLogger->enable();
-        $this->n1Detector->setCurrentRoute( $this->resolveRouteLabel( $request ) );
+        if ( $this->shouldEnableAnalyzer() ) {
+            $this->analyzer->enableQueryLogging();
+        }
+
+        if ( $this->shouldEnableN1Detector() ) {
+            $this->n1Detector->enable();
+            $this->n1Detector->setCurrentRoute( $this->resolveRouteLabel( $request ) );
+        }
+
+        if ( $this->shouldEnableSlowQueryLogger() ) {
+            $this->slowQueryLogger->enable();
+        }
 
         return $next( $request );
     }
 
     /**
-     * Reports whether the request should trigger detection setup.
+     * Reports whether the QueryAnalyzer should be enabled for this request.
      *
-     * Detection is opt-in by feature flag — `query_optimization` covers
-     * the analyzer + N+1 detector, while `slow_query_logging.enabled`
-     * gates the slow-query logger. Either being on is enough to fire
-     * up the middleware; a request matching the exclude list short-
-     * circuits both regardless.
+     * Gated on `features.query_optimization` so it stays in lockstep
+     * with the equivalent gate inside `PerformanceServiceProvider::bootDatabaseObservers()`.
      *
      * @since 1.0.0
-     *
-     * @param  Request  $request  Incoming request.
      */
-    protected function shouldDetect( Request $request ): bool
+    protected function shouldEnableAnalyzer(): bool
     {
-        $queryOptOn = (bool) config( 'artisanpack.performance.features.query_optimization', false );
-        $slowOptOn  = (bool) config( 'artisanpack.performance.database.slow_query_logging.enabled', false );
+        return (bool) config( 'artisanpack.performance.features.query_optimization', false );
+    }
 
-        if ( ! $queryOptOn && ! $slowOptOn ) {
-            return false;
-        }
+    /**
+     * Reports whether the N+1 detector should be enabled for this request.
+     *
+     * Uses `database.n1_detection.enabled` (NOT `features.query_optimization`)
+     * so a user who explicitly disabled N+1 detection at the sub-flag
+     * level doesn't get it re-enabled by virtue of having opted into
+     * query optimization in general.
+     *
+     * @since 1.0.0
+     */
+    protected function shouldEnableN1Detector(): bool
+    {
+        return (bool) config( 'artisanpack.performance.database.n1_detection.enabled', false );
+    }
 
-        return ! $this->matchesExcludedRoute( $request );
+    /**
+     * Reports whether the SlowQueryLogger should be enabled for this request.
+     *
+     * Gated on its own sub-flag so apps that want only N+1 detection
+     * (or only the analyzer) don't pay the logger's per-query
+     * backtrace + persistence overhead.
+     *
+     * @since 1.0.0
+     */
+    protected function shouldEnableSlowQueryLogger(): bool
+    {
+        return (bool) config( 'artisanpack.performance.database.slow_query_logging.enabled', false );
     }
 
     /**

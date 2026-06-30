@@ -83,29 +83,18 @@ it( 'returns signatures that exceed the threshold', function (): void {
     expect( $analyzer->repeatedSignatures( 5 ) )->not->toHaveKey( 'select * from users' );
 } );
 
-it( 'dispatches SlowQueryDetected when threshold_ms is exceeded', function (): void {
+it( 'does not dispatch SlowQueryDetected — SlowQueryLogger is the canonical dispatcher', function (): void {
+    // QueryAnalyzer used to fire SlowQueryDetected itself, but the
+    // dedicated SlowQueryLogger now owns that event. Keeping both
+    // dispatchers wired produced duplicate event firings whenever
+    // both services were enabled together.
     Event::fake();
 
     config( [ 'artisanpack.performance.database.slow_query_logging.enabled' => true ] );
     config( [ 'artisanpack.performance.database.slow_query_logging.threshold_ms' => 50 ] );
 
     $analyzer = new QueryAnalyzer;
-
     $analyzer->record( new QueryExecuted( 'SELECT * FROM huge_table', [], 250.0, fakeConnection() ) );
-
-    Event::assertDispatched( SlowQueryDetected::class, function ( SlowQueryDetected $event ): bool {
-        return 250.0 === $event->timeMs;
-    } );
-} );
-
-it( 'does not dispatch when below the slow-query threshold', function (): void {
-    Event::fake();
-
-    config( [ 'artisanpack.performance.database.slow_query_logging.enabled' => true ] );
-    config( [ 'artisanpack.performance.database.slow_query_logging.threshold_ms' => 500 ] );
-
-    $analyzer = new QueryAnalyzer;
-    $analyzer->record( new QueryExecuted( 'SELECT 1', [], 1.0, fakeConnection() ) );
 
     Event::assertNotDispatched( SlowQueryDetected::class );
 } );

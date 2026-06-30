@@ -186,7 +186,7 @@ return [
     */
 
     'html_minification' => [
-        'enabled' => true,
+        'enabled' => false,
         'remove_comments' => true,
         'remove_whitespace' => true,
         'preserve_line_breaks' => false,
@@ -206,7 +206,7 @@ return [
     */
 
     'early_hints' => [
-        'enabled' => true,
+        'enabled' => false,
         'auto_detect' => true,
         'manual_hints' => [],
     ],
@@ -223,7 +223,7 @@ return [
     */
 
     'page_cache' => [
-        'enabled' => true,
+        'enabled' => false,
         'driver' => env('PERF_PAGE_CACHE_DRIVER', 'file'),
         'ttl' => 3600,
         'exclude_routes' => ['admin/*', 'user/*'],
@@ -243,7 +243,7 @@ return [
     */
 
     'fragment_cache' => [
-        'enabled' => true,
+        'enabled' => false,
         'driver' => env('PERF_FRAGMENT_CACHE_DRIVER', 'file'),
         'default_ttl' => 3600,
     ],
@@ -260,7 +260,7 @@ return [
     */
 
     'cache_warming' => [
-        'enabled' => true,
+        'enabled' => false,
         'routes' => [],
         'urls' => [],
         'concurrent_requests' => 5,
@@ -280,20 +280,20 @@ return [
 
     'database' => [
         'n1_detection' => [
-            'enabled' => true,
+            'enabled' => false,
             'threshold' => 5,
             'log_channel' => 'performance',
             'notify' => false,
         ],
         'slow_query_logging' => [
-            'enabled' => true,
+            'enabled' => false,
             'threshold_ms' => 100,
             'log_channel' => 'performance',
             'store_in_database' => false,
             'retention_days' => 30,
         ],
         'query_cache' => [
-            'enabled' => true,
+            'enabled' => false,
             'driver' => env('PERF_QUERY_CACHE_DRIVER', 'redis'),
         ],
     ],

@@ -14,9 +14,23 @@
  * queries is more likely to benefit from an index than one that
  * appears once.
  *
- * Suggestions are returned in priority order (high → low) so callers
- * (the `perf:suggest-indexes` command, the dashboard) can render
- * them as ranked tables without further sorting.
+ * Parsing happens in three preparation passes before any clause-level
+ * extraction:
+ *
+ * 1. String literals are extracted into placeholders so subsequent
+ *    regexes can't be tricked by `--` or `;` inside a quoted value.
+ * 2. SQL line / block comments are stripped from the placeholder-
+ *    safe text.
+ * 3. Balanced subqueries are removed so the outer FROM / WHERE / ORDER BY
+ *    can be matched without slurping inner clauses (the previous
+ *    implementation regularly attributed inner subquery columns to the
+ *    outer table).
+ *
+ * After preparation the suggester walks FROM and JOIN clauses to build
+ * an alias → table map, then resolves each column to its owning table
+ * via that map. Columns whose qualifier isn't in the map are skipped
+ * — a wrong-table suggestion is worse than no suggestion because the
+ * generated migration would fail to apply.
  *
  *
  * @author     Jacob Martella <me@jacobmartella.com>
@@ -40,6 +54,72 @@ use Throwable;
  */
 class IndexSuggester
 {
+    /**
+     * SQL keywords / clause terminators that must never be captured as columns.
+     *
+     * The ORDER BY parser scans for identifier tokens, but trailing
+     * lock hints (`FOR UPDATE`, `SKIP LOCKED`), null-ordering specs
+     * (`NULLS FIRST`, `NULLS LAST`), direction markers, and OFFSET /
+     * FETCH clauses look identical to bare identifiers. Without an
+     * explicit blocklist a clause like `ORDER BY created_at FOR UPDATE`
+     * would yield the columns `['created_at', 'for', 'update']` and
+     * scaffold a migration that fails on apply.
+     *
+     * @since 1.0.0
+     *
+     * @var array<string, true>
+     */
+    protected const SQL_KEYWORDS = [
+        'asc'      => true,
+        'desc'     => true,
+        'for'      => true,
+        'update'   => true,
+        'share'    => true,
+        'lock'     => true,
+        'skip'     => true,
+        'locked'   => true,
+        'nowait'   => true,
+        'nulls'    => true,
+        'first'    => true,
+        'last'     => true,
+        'offset'   => true,
+        'fetch'    => true,
+        'rows'     => true,
+        'row'      => true,
+        'only'     => true,
+        'with'     => true,
+        'ties'     => true,
+        'using'    => true,
+        'as'       => true,
+        'on'       => true,
+        'and'      => true,
+        'or'       => true,
+        'not'      => true,
+        'null'     => true,
+        'is'       => true,
+        'in'       => true,
+        'like'     => true,
+        'between'  => true,
+        'true'     => true,
+        'false'    => true,
+        'group'    => true,
+        'by'       => true,
+        'having'   => true,
+        'limit'    => true,
+        'order'    => true,
+        'where'    => true,
+        'select'   => true,
+        'from'     => true,
+        'join'     => true,
+        'inner'    => true,
+        'outer'    => true,
+        'left'     => true,
+        'right'    => true,
+        'cross'    => true,
+        'full'     => true,
+        'natural'  => true,
+    ];
+
     /**
      * Returns ranked index suggestions for the supplied queries.
      *
@@ -123,18 +203,35 @@ class IndexSuggester
             foreach ( $columnSets as $columns ) {
                 $lines[] = sprintf(
                     '            $table->index([%s]);',
-                    implode( ', ', array_map( static fn ( string $column ): string => "'" . $column . "'", $columns ) ),
+                    implode( ', ', array_map( fn ( string $column ): string => $this->phpQuote( $column ), $columns ) ),
                 );
             }
 
             $blocks[] = sprintf(
-                "        Schema::table('%s', function (Blueprint \$table) {\n%s\n        });",
-                $table,
+                "        Schema::table(%s, function (Blueprint \$table) {\n%s\n        });",
+                $this->phpQuote( $table ),
                 implode( "\n", $lines ),
             );
         }
 
         return implode( "\n\n", $blocks );
+    }
+
+    /**
+     * PHP-quotes an identifier for safe embedding in generated migration code.
+     *
+     * Backslashes and single quotes are escaped so column / table names
+     * that include those characters (rare but legal in PostgreSQL with
+     * `"O'Brien"`-style quoted identifiers) don't produce unrunnable
+     * migration files.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $value  Identifier to embed.
+     */
+    protected function phpQuote( string $value ): string
+    {
+        return "'" . str_replace( [ '\\', "'" ], [ '\\\\', "\\'" ], $value ) . "'";
     }
 
     /**
@@ -166,14 +263,12 @@ class IndexSuggester
     /**
      * Extracts candidate (table, columns) tuples from a single SQL string.
      *
-     * Three clauses are inspected:
-     * - WHERE: simple equality filters (`col = ?`, `col IN (?)`).
-     * - ORDER BY: trailing columns benefit from composite indexes that
-     *   start with the WHERE columns.
-     * - JOIN: the joined table's column on the join condition.
-     *
-     * The output preserves the order in which columns appear so the
-     * suggested index leads with the most selective column.
+     * The query is first preprocessed (literals → placeholders, comments
+     * stripped, subqueries blanked). FROM and JOIN clauses are walked to
+     * build an alias → table map. WHERE / ORDER BY / JOIN columns are
+     * then resolved through that map; any column whose qualifier can't
+     * be resolved is skipped so we never propose `INDEX(status)` on a
+     * table that doesn't have a `status` column.
      *
      * @since 1.0.0
      *
@@ -183,32 +278,45 @@ class IndexSuggester
      */
     protected function extractCandidates( string $sql ): array
     {
-        $normalized = $this->stripCommentsAndCollapse( $sql );
+        $prepared = $this->prepareSql( $sql );
 
-        $table = $this->extractTable( $normalized );
-
-        if ( null === $table ) {
+        if ( '' === $prepared['outer'] ) {
             return [];
         }
 
-        $whereColumns   = $this->extractWhereColumns( $normalized );
-        $orderByColumns = $this->extractOrderByColumns( $normalized );
-        $joinCandidates = $this->extractJoinCandidates( $normalized );
+        $aliasMap = $this->buildAliasMap( $prepared['outer'] );
+
+        if ( [] === $aliasMap ) {
+            return [];
+        }
+
+        $primaryTable = $this->extractPrimaryTable( $prepared['outer'] );
+
+        if ( null === $primaryTable ) {
+            return [];
+        }
+
+        $whereColumns   = $this->extractWhereColumns( $prepared['outer'], $aliasMap, $primaryTable );
+        $orderByColumns = $this->extractOrderByColumns( $prepared['outer'], $aliasMap, $primaryTable );
+        $joinCandidates = $this->extractJoinCandidates( $prepared['outer'], $aliasMap );
 
         $candidates = [];
 
-        if ( [] !== $whereColumns ) {
-            $columns = array_values( array_unique( array_merge( $whereColumns, $orderByColumns ) ) );
+        $primaryWhere = $whereColumns[ $primaryTable ] ?? [];
+        $primaryOrder = $orderByColumns[ $primaryTable ] ?? [];
+
+        if ( [] !== $primaryWhere ) {
+            $columns = $this->mergeOrdered( $primaryWhere, $primaryOrder );
 
             $candidates[] = [
-                'table'   => $table,
+                'table'   => $primaryTable,
                 'columns' => $columns,
-                'source'  => 'where' . ( [] === $orderByColumns ? '' : '+order_by' ),
+                'source'  => [] === $primaryOrder ? 'where' : 'where+order_by',
             ];
-        } elseif ( [] !== $orderByColumns ) {
+        } elseif ( [] !== $primaryOrder ) {
             $candidates[] = [
-                'table'   => $table,
-                'columns' => $orderByColumns,
+                'table'   => $primaryTable,
+                'columns' => $primaryOrder,
                 'source'  => 'order_by',
             ];
         }
@@ -225,41 +333,216 @@ class IndexSuggester
     }
 
     /**
-     * Strips block/inline comments and collapses whitespace.
+     * Preprocesses raw SQL into a parser-safe form.
      *
-     * Index suggestion uses regex scanning, so comments and runs of
-     * whitespace add noise without information. Strings are not
-     * touched — they are unlikely to contain SQL fragments the
-     * suggester would mistake for clause boundaries.
+     * Three steps: stash single- and double-quoted string literals into
+     * placeholders so subsequent regexes can't be confused by `--` /
+     * `;` inside a quoted value, strip line + block comments, then
+     * replace balanced parenthesized subexpressions with a single
+     * space so the outer query's clause boundaries are unambiguous.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $sql  Raw SQL.
+     *
+     * @return array{outer: string} Map containing the prepared outer-query text.
+     */
+    protected function prepareSql( string $sql ): array
+    {
+        $stripped = $this->stripStringLiterals( $sql );
+        $stripped = $this->stripComments( $stripped );
+        $stripped = $this->stripSubqueries( $stripped );
+        $stripped = (string) preg_replace( '/\s+/', ' ', $stripped );
+
+        return [ 'outer' => trim( $stripped ) ];
+    }
+
+    /**
+     * Replaces every string literal in the SQL with a same-length space run.
+     *
+     * Same-length replacement preserves byte offsets for any downstream
+     * tooling and keeps the regex preprocessor from changing the shape
+     * of surrounding tokens (e.g. spaces between predicates).
      *
      * @since 1.0.0
      *
      * @param  string  $sql  Raw SQL.
      */
-    protected function stripCommentsAndCollapse( string $sql ): string
+    protected function stripStringLiterals( string $sql ): string
     {
-        $sql = (string) preg_replace( '#/\*.*?\*/#s', ' ', $sql );
-        $sql = (string) preg_replace( '/--[^\n]*/', ' ', $sql );
-        $sql = (string) preg_replace( '/\s+/', ' ', $sql );
+        $output = '';
+        $i      = 0;
+        $len    = strlen( $sql );
 
-        return trim( $sql );
+        while ( $i < $len ) {
+            $char = $sql[ $i ];
+
+            if ( "'" === $char || '"' === $char ) {
+                $output .= ' ';
+                $i++;
+
+                while ( $i < $len ) {
+                    $inner = $sql[ $i ];
+
+                    if ( '\\' === $inner && $i + 1 < $len ) {
+                        $output .= '  ';
+                        $i += 2;
+
+                        continue;
+                    }
+
+                    if ( $inner === $char ) {
+                        // Standard SQL doubled-quote escape (e.g. 'O''Brien'):
+                        // consume both quote chars as part of the literal.
+                        if ( $i + 1 < $len && $sql[ $i + 1 ] === $char ) {
+                            $output .= '  ';
+                            $i += 2;
+                            continue;
+                        }
+
+                        $output .= ' ';
+                        $i++;
+                        break;
+                    }
+
+                    $output .= ' ';
+                    $i++;
+                }
+
+                continue;
+            }
+
+            $output .= $char;
+            $i++;
+        }
+
+        return $output;
     }
 
     /**
-     * Extracts the primary FROM table from a SELECT statement.
+     * Strips `--` line comments and `/* ... *​/` block comments.
      *
-     * Handles backtick-quoted, double-quoted, and bare identifiers.
-     * Returns null when no FROM clause is present (DML statements
-     * like INSERT INTO use a different keyword and aren't candidates
-     * for SELECT-style index suggestion).
+     * Runs AFTER `stripStringLiterals()` so `--` inside a quoted value
+     * is not misread as the start of a comment.
      *
      * @since 1.0.0
      *
-     * @param  string  $sql  Normalized SQL.
+     * @param  string  $sql  Literal-stripped SQL.
      */
-    protected function extractTable( string $sql ): ?string
+    protected function stripComments( string $sql ): string
     {
-        if ( 1 !== preg_match( '/\bfrom\s+["`]?(?P<table>[a-z_][a-z0-9_]*)["`]?/i', $sql, $matches ) ) {
+        $sql = (string) preg_replace( '#/\*.*?\*/#s', ' ', $sql );
+        $sql = (string) preg_replace( '/--[^\n]*/', ' ', $sql );
+
+        return $sql;
+    }
+
+    /**
+     * Replaces every balanced parenthesized subexpression with a space.
+     *
+     * Subqueries inside SELECT lists, WHERE predicates, and CTE bodies
+     * all show up as parenthesized SELECT statements. Removing them
+     * before clause extraction prevents the outer-clause regexes from
+     * slurping inner WHERE / ORDER BY content and attributing it to
+     * the outer table. The replacement is depth-aware so nested
+     * parens unwind correctly.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $sql  Literal-stripped, comment-free SQL.
+     */
+    protected function stripSubqueries( string $sql ): string
+    {
+        $output = '';
+        $i      = 0;
+        $len    = strlen( $sql );
+
+        while ( $i < $len ) {
+            $char = $sql[ $i ];
+
+            if ( '(' === $char ) {
+                $depth = 1;
+                $j     = $i + 1;
+
+                while ( $j < $len && $depth > 0 ) {
+                    if ( '(' === $sql[ $j ] ) {
+                        $depth++;
+                    } elseif ( ')' === $sql[ $j ] ) {
+                        $depth--;
+                    }
+
+                    $j++;
+                }
+
+                $output .= ' ';
+                $i       = $j;
+
+                continue;
+            }
+
+            $output .= $char;
+            $i++;
+        }
+
+        return $output;
+    }
+
+    /**
+     * Builds an alias → table map from FROM + JOIN clauses.
+     *
+     * Both `FROM users u` and `FROM users AS u` (and `FROM users`
+     * without an alias, in which case the table name acts as its own
+     * alias) are supported. The first FROM clause supplies the
+     * primary table; subsequent `JOIN <table> [AS] <alias>` entries
+     * add additional aliases.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $outer  The outer query string.
+     *
+     * @return array<string, string> Lowercase alias → lowercase table name.
+     */
+    protected function buildAliasMap( string $outer ): array
+    {
+        $map = [];
+
+        preg_match_all(
+            '/\b(?:from|join)\s+["`]?(?P<table>[a-z_][a-z0-9_]*)["`]?(?:\s+(?:as\s+)?["`]?(?P<alias>[a-z_][a-z0-9_]*)["`]?)?/i',
+            $outer,
+            $matches,
+            PREG_SET_ORDER,
+        );
+
+        foreach ( $matches as $match ) {
+            $table = strtolower( $match['table'] );
+            $alias = isset( $match['alias'] ) && '' !== $match['alias']
+                ? strtolower( $match['alias'] )
+                : $table;
+
+            if ( isset( self::SQL_KEYWORDS[ $alias ] ) ) {
+                $alias = $table;
+            }
+
+            $map[ $alias ] = $table;
+            $map[ $table ] = $table;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Returns the primary FROM table (used as the default WHERE / ORDER BY owner).
+     *
+     * Subqueries are already gone by the time this runs, so the first
+     * matching `\bfrom\s+<ident>` is the outer query's primary table.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $outer  The outer query string.
+     */
+    protected function extractPrimaryTable( string $outer ): ?string
+    {
+        if ( 1 !== preg_match( '/\bfrom\s+["`]?(?P<table>[a-z_][a-z0-9_]*)["`]?/i', $outer, $matches ) ) {
             return null;
         }
 
@@ -267,87 +550,113 @@ class IndexSuggester
     }
 
     /**
-     * Extracts equality columns from the WHERE clause.
+     * Extracts equality columns from the WHERE clause, grouped by owning table.
      *
-     * Matches `col = ?`, `col = 'literal'`, `col IN (?)`, and `col IS NULL`
-     * patterns. Subqueries are intentionally ignored — their predicates
-     * would not benefit from an index on the outer table. Identifiers
-     * that include a table prefix (e.g. `t1.user_id`) are unwrapped to
-     * the column name only.
+     * Matches simple equality predicates (`col = ?`, `col IN (?)`, `col IS NULL`).
+     * Each captured column carries its `table.` qualifier through to the
+     * alias map so JOIN queries don't end up suggesting columns on the
+     * wrong table. Columns without a qualifier are attributed to the
+     * primary table.
      *
      * @since 1.0.0
      *
-     * @param  string  $sql  Normalized SQL.
+     * @param  string  $outer  The outer query string.
+     * @param  array<string, string>  $aliasMap  Alias → table map.
+     * @param  string  $primaryTable  Fallback table for unqualified columns.
      *
-     * @return array<int, string>
+     * @return array<string, array<int, string>> Table → column list (insertion order preserved).
      */
-    protected function extractWhereColumns( string $sql ): array
+    protected function extractWhereColumns( string $outer, array $aliasMap, string $primaryTable ): array
     {
-        if ( 1 !== preg_match( '/\bwhere\b(.*?)(?:\bgroup\s+by\b|\border\s+by\b|\blimit\b|\bhaving\b|$)/is', $sql, $matches ) ) {
+        if ( 1 !== preg_match( '/\bwhere\b(.*?)(?:\bgroup\s+by\b|\border\s+by\b|\blimit\b|\bhaving\b|$)/is', $outer, $matches ) ) {
             return [];
         }
 
         $clause = $matches[1];
 
         preg_match_all(
-            '/(?:["`]?[a-z_][a-z0-9_]*["`]?\.)?["`]?(?P<column>[a-z_][a-z0-9_]*)["`]?\s*(?:=|in\s*\(|is\s+(?:not\s+)?null)/i',
+            '/(?:["`]?(?P<table>[a-z_][a-z0-9_]*)["`]?\.)?["`]?(?P<column>[a-z_][a-z0-9_]*)["`]?\s*(?:=|in\s*\(|is\s+(?:not\s+)?null)/i',
             $clause,
             $columnMatches,
+            PREG_SET_ORDER,
         );
 
-        return $this->deduplicateColumns( $columnMatches['column'] ?? [] );
+        return $this->groupByTable( $columnMatches, $aliasMap, $primaryTable );
     }
 
     /**
-     * Extracts columns referenced in the ORDER BY clause.
+     * Extracts columns referenced in the ORDER BY clause, grouped by table.
      *
-     * The clause is scanned for column references; explicit ASC/DESC
-     * directions are dropped because they don't affect index suitability
-     * for the standard B-tree case (composite indexes serve both
-     * directions of a single column).
+     * Function calls (`LOWER(name)`, `COALESCE(a, b)`) are skipped — the
+     * function name is not a column. SQL keywords appearing in trailing
+     * clauses (FOR UPDATE, NULLS LAST, SKIP LOCKED) are filtered out by
+     * the SQL_KEYWORDS blocklist.
      *
      * @since 1.0.0
      *
-     * @param  string  $sql  Normalized SQL.
+     * @param  string  $outer  The outer query string.
+     * @param  array<string, string>  $aliasMap  Alias → table map.
+     * @param  string  $primaryTable  Fallback table for unqualified columns.
      *
-     * @return array<int, string>
+     * @return array<string, array<int, string>>
      */
-    protected function extractOrderByColumns( string $sql ): array
+    protected function extractOrderByColumns( string $outer, array $aliasMap, string $primaryTable ): array
     {
-        if ( 1 !== preg_match( '/\border\s+by\b(.*?)(?:\blimit\b|\bhaving\b|$)/is', $sql, $matches ) ) {
+        if ( 1 !== preg_match( '/\border\s+by\b(.*?)(?:\blimit\b|\bhaving\b|\bfor\s+update\b|\bfor\s+share\b|\boffset\b|\bfetch\b|$)/is', $outer, $matches ) ) {
             return [];
         }
 
         $clause = $matches[1];
 
+        // Match a column reference followed by a non-identifier character
+        // (or end of string). The trailing assertion rejects function
+        // identifiers because they're followed by `(`.
         preg_match_all(
-            '/(?:["`]?[a-z_][a-z0-9_]*["`]?\.)?["`]?(?P<column>[a-z_][a-z0-9_]*)["`]?(?:\s+(?:asc|desc))?/i',
+            '/(?:["`]?(?P<table>[a-z_][a-z0-9_]*)["`]?\.)?["`]?(?P<column>[a-z_][a-z0-9_]*)["`]?(?P<after>\s*[,()]|\s+(?:asc|desc|nulls|,)|\s*$)/i',
             $clause,
             $columnMatches,
+            PREG_SET_ORDER,
         );
 
-        return $this->deduplicateColumns( $columnMatches['column'] ?? [] );
+        $filtered = [];
+
+        foreach ( $columnMatches as $match ) {
+            $after = trim( $match['after'] );
+
+            // A trailing `(` means the identifier was a function name.
+            if ( str_starts_with( $after, '(' ) ) {
+                continue;
+            }
+
+            $filtered[] = $match;
+        }
+
+        return $this->groupByTable( $filtered, $aliasMap, $primaryTable );
     }
 
     /**
-     * Extracts table + column pairs from JOIN clauses.
+     * Extracts (joined-table, joined-column) pairs from JOIN clauses.
      *
-     * Joined tables benefit from indexes on the joined column even when
-     * the WHERE clause targets the primary table only. The pattern
-     * captures `JOIN <table> ON <table_or_alias>.<column> = ...` and
-     * returns the joined table's column.
+     * For `JOIN <table> [AS] <alias> ON <a>.<col1> = <b>.<col2>`, the
+     * column that should be indexed is the one on the joined table —
+     * NOT the column on the outer table (which is typically the PK and
+     * already indexed). We use the alias map to resolve each side and
+     * pick the column whose table matches the joined table.
      *
      * @since 1.0.0
      *
-     * @param  string  $sql  Normalized SQL.
+     * @param  string  $outer  The outer query string.
+     * @param  array<string, string>  $aliasMap  Alias → table map.
      *
      * @return array<int, array{table: string, column: string}>
      */
-    protected function extractJoinCandidates( string $sql ): array
+    protected function extractJoinCandidates( string $outer, array $aliasMap ): array
     {
         preg_match_all(
-            '/\bjoin\s+["`]?(?P<table>[a-z_][a-z0-9_]*)["`]?(?:\s+(?:as\s+)?["`]?[a-z_][a-z0-9_]*["`]?)?\s+on\s+(?:["`]?[a-z_][a-z0-9_]*["`]?\.)?["`]?(?P<column>[a-z_][a-z0-9_]*)["`]?\s*=/i',
-            $sql,
+            '/\bjoin\s+["`]?(?P<table>[a-z_][a-z0-9_]*)["`]?(?:\s+(?:as\s+)?["`]?(?P<alias>[a-z_][a-z0-9_]*)["`]?)?\s+on\s+'
+            . '["`]?(?P<lhs_table>[a-z_][a-z0-9_]*)["`]?\.["`]?(?P<lhs_column>[a-z_][a-z0-9_]*)["`]?\s*=\s*'
+            . '["`]?(?P<rhs_table>[a-z_][a-z0-9_]*)["`]?\.["`]?(?P<rhs_column>[a-z_][a-z0-9_]*)["`]?/i',
+            $outer,
             $matches,
             PREG_SET_ORDER,
         );
@@ -355,9 +664,34 @@ class IndexSuggester
         $candidates = [];
 
         foreach ( $matches as $match ) {
+            $joinedTable = strtolower( $match['table'] );
+            $joinedAlias = isset( $match['alias'] ) && '' !== $match['alias']
+                ? strtolower( $match['alias'] )
+                : $joinedTable;
+
+            // Filter ON predicates "AS" / "ON" being captured as alias.
+            if ( isset( self::SQL_KEYWORDS[ $joinedAlias ] ) ) {
+                $joinedAlias = $joinedTable;
+            }
+
+            $lhsAlias  = strtolower( $match['lhs_table'] );
+            $rhsAlias  = strtolower( $match['rhs_table'] );
+
+            $candidate = null;
+
+            if ( $lhsAlias === $joinedAlias || $lhsAlias === $joinedTable ) {
+                $candidate = strtolower( $match['lhs_column'] );
+            } elseif ( $rhsAlias === $joinedAlias || $rhsAlias === $joinedTable ) {
+                $candidate = strtolower( $match['rhs_column'] );
+            }
+
+            if ( null === $candidate || isset( self::SQL_KEYWORDS[ $candidate ] ) ) {
+                continue;
+            }
+
             $candidates[] = [
-                'table'  => strtolower( $match['table'] ),
-                'column' => strtolower( $match['column'] ),
+                'table'  => $aliasMap[ $joinedAlias ] ?? $joinedTable,
+                'column' => $candidate,
             ];
         }
 
@@ -365,32 +699,80 @@ class IndexSuggester
     }
 
     /**
-     * Lowercases columns and removes duplicates while preserving order.
+     * Groups column matches by their owning table via the alias map.
      *
-     * Order matters for composite-index suggestions — the lead column
-     * should be the one the developer wrote first, which is typically
-     * the most selective.
+     * Columns referenced with a `<qualifier>.<column>` form are
+     * resolved through `$aliasMap`; unqualified columns are attributed
+     * to `$primaryTable`. A column whose qualifier doesn't resolve is
+     * dropped — the goal is no migration that fails to apply.
      *
      * @since 1.0.0
      *
-     * @param  array<int, string>  $columns  Raw column matches.
+     * @param  array<int, array<string, string>>  $matches  Raw regex match groups (must contain `table` + `column`).
+     * @param  array<string, string>  $aliasMap  Alias → table map.
+     * @param  string  $primaryTable  Fallback for unqualified columns.
+     *
+     * @return array<string, array<int, string>>
+     */
+    protected function groupByTable( array $matches, array $aliasMap, string $primaryTable ): array
+    {
+        $byTable = [];
+
+        foreach ( $matches as $match ) {
+            $columnRaw    = isset( $match['column'] ) ? strtolower( trim( $match['column'] ) ) : '';
+            $qualifierRaw = isset( $match['table'] ) ? strtolower( trim( $match['table'] ) ) : '';
+
+            if ( '' === $columnRaw || isset( self::SQL_KEYWORDS[ $columnRaw ] ) ) {
+                continue;
+            }
+
+            if ( '' === $qualifierRaw ) {
+                $owningTable = $primaryTable;
+            } elseif ( isset( $aliasMap[ $qualifierRaw ] ) ) {
+                $owningTable = $aliasMap[ $qualifierRaw ];
+            } else {
+                // Qualifier didn't resolve — refuse to guess.
+                continue;
+            }
+
+            if ( isset( $byTable[ $owningTable ] ) && in_array( $columnRaw, $byTable[ $owningTable ], true ) ) {
+                continue;
+            }
+
+            $byTable[ $owningTable ][] = $columnRaw;
+        }
+
+        return $byTable;
+    }
+
+    /**
+     * Merges two ordered column lists, preserving first-seen order.
+     *
+     * Used to combine WHERE-clause columns with ORDER BY-clause columns
+     * into a composite index suggestion. The lead column should be
+     * whatever the developer wrote first (typically the most selective).
+     *
+     * @since 1.0.0
+     *
+     * @param  array<int, string>  $first  Primary column list.
+     * @param  array<int, string>  $second  Secondary column list to append.
      *
      * @return array<int, string>
      */
-    protected function deduplicateColumns( array $columns ): array
+    protected function mergeOrdered( array $first, array $second ): array
     {
         $seen   = [];
         $result = [];
 
-        foreach ( $columns as $column ) {
-            $column = strtolower( trim( $column ) );
+        foreach ( [ $first, $second ] as $list ) {
+            foreach ( $list as $column ) {
+                if ( isset( $seen[ $column ] ) ) {
+                    continue;
+                }
 
-            if ( '' === $column || isset( $seen[ $column ] ) ) {
-                continue;
+                $seen[ $column ] = true;
+                $result[]        = $column;
             }
-
-            $seen[ $column ] = true;
-            $result[]        = $column;
         }
 
         return $result;

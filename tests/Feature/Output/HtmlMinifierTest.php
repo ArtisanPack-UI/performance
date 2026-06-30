@@ -10,7 +10,7 @@ beforeEach( function (): void {
         'remove_comments'      => true,
         'remove_whitespace'    => true,
         'preserve_line_breaks' => false,
-        'exclude_elements'     => [ 'pre', 'code', 'textarea', 'script' ],
+        'exclude_elements'     => [ 'pre', 'code', 'textarea', 'script', 'style' ],
     ] ] );
 } );
 
@@ -31,12 +31,69 @@ it( 'preserves IE conditional comments', function (): void {
     expect( $minifier->minify( $html ) )->toContain( '[if IE 9]' );
 } );
 
-it( 'collapses runs of whitespace', function (): void {
+it( 'collapses runs of whitespace inside text content', function (): void {
     $minifier = new HtmlMinifier;
 
+    // Inter-tag whitespace collapses to a single space rather than being
+    // stripped — stripping would mangle meaningful whitespace between
+    // inline elements (e.g. `<a>x</a> <a>y</a>` rendering as `xy`).
     $minified = $minifier->minify( "<div>\n    <p>Hello    World</p>\n</div>" );
 
-    expect( $minified )->toBe( '<div><p>Hello World</p></div>' );
+    expect( $minified )->toBe( '<div> <p>Hello World</p> </div>' );
+} );
+
+it( 'preserves meaningful whitespace between inline elements', function (): void {
+    $minifier = new HtmlMinifier;
+
+    // The single space between two adjacent anchors is semantically
+    // meaningful — stripping it would render `docsfaq` instead of
+    // `docs faq`.
+    $minified = $minifier->minify( '<p>See <a href="/x">docs</a> <a href="/y">faq</a></p>' );
+
+    expect( $minified )->toBe( '<p>See <a href="/x">docs</a> <a href="/y">faq</a></p>' );
+} );
+
+it( 'preserves whitespace inside attribute values', function (): void {
+    $minifier = new HtmlMinifier;
+
+    // The naive `/\s+/` pass over the whole document would collapse
+    // `alt="Hello   World"` to `alt="Hello World"`, silently changing
+    // visible attribute content that the server emitted intentionally.
+    $minified = $minifier->minify( '<input alt="Hello   World" value="line one&#10;line two">' );
+
+    expect( $minified )->toContain( 'alt="Hello   World"' );
+    expect( $minified )->toContain( 'value="line one&#10;line two"' );
+} );
+
+it( 'preserves comment-shaped substrings inside attribute values', function (): void {
+    $minifier = new HtmlMinifier;
+
+    // A `<!--` substring legitimately appearing inside an attribute
+    // value must NOT be matched by the comment-strip pass.
+    $minified = $minifier->minify( '<a title="<!-- not a comment -->">link</a>' );
+
+    expect( $minified )->toContain( '<!-- not a comment -->' );
+} );
+
+it( 'handles nested same-element markup without orphaning closing tags', function (): void {
+    $minifier = new HtmlMinifier;
+
+    // A non-greedy regex over the document would pair the first <pre>
+    // with the first </pre> and leave the second </pre> stranded.
+    $minified = $minifier->minify( '<pre><pre>inner</pre></pre>' );
+
+    expect( $minified )->toBe( '<pre><pre>inner</pre></pre>' );
+} );
+
+it( 'aborts cleanly when the input contains the placeholder sentinel byte', function (): void {
+    $minifier = new HtmlMinifier;
+
+    // \x02 (STX) is reserved as the placeholder sentinel. If user
+    // content contains it, return the bytes untouched rather than
+    // risk corruption.
+    $html = "<div>safe\x02unsafe</div>";
+
+    expect( $minifier->minify( $html ) )->toBe( $html );
 } );
 
 it( 'preserves whitespace inside excluded elements', function (): void {

@@ -22,10 +22,8 @@ declare( strict_types=1 );
 
 namespace ArtisanPackUI\Performance\Database;
 
-use ArtisanPackUI\Performance\Events\SlowQueryDetected;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
 
 /**
  * Query analyzer service class.
@@ -138,8 +136,6 @@ class QueryAnalyzer
         $signature                   = $analysis['normalized'];
         $this->counts[ $signature ]  = ( $this->counts[ $signature ] ?? 0 ) + 1;
         $this->timings[ $signature ] = ( $this->timings[ $signature ] ?? 0.0 ) + $analysis['time_ms'];
-
-        $this->dispatchSlowQueryEvent( $event, $analysis['time_ms'] );
     }
 
     /**
@@ -292,38 +288,6 @@ class QueryAnalyzer
             $this->counts,
             static fn ( int $count ): bool => $count >= $threshold,
         );
-    }
-
-    /**
-     * Dispatches `SlowQueryDetected` when the threshold is exceeded.
-     *
-     * The slow-query threshold is the only place the analyzer fires
-     * an event itself — N+1 detection lives in a dedicated service so
-     * applications can disable one feature without losing the other.
-     *
-     * @since 1.0.0
-     *
-     * @param  QueryExecuted  $event  The Laravel query event.
-     * @param  float  $timeMs  Execution time in milliseconds.
-     */
-    protected function dispatchSlowQueryEvent( QueryExecuted $event, float $timeMs ): void
-    {
-        if ( ! (bool) config( 'artisanpack.performance.database.slow_query_logging.enabled', false ) ) {
-            return;
-        }
-
-        $threshold = (float) config( 'artisanpack.performance.database.slow_query_logging.threshold_ms', 100 );
-
-        if ( $timeMs < $threshold ) {
-            return;
-        }
-
-        Event::dispatch( new SlowQueryDetected(
-            query: $event->sql,
-            timeMs: $timeMs,
-            trace: [],
-            bindings: $event->bindings,
-        ) );
     }
 
     /**

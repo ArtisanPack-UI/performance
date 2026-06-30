@@ -49,8 +49,9 @@ it( 'enables all detectors when feature flags are on', function (): void {
     expect( $logger->isEnabled() )->toBeTrue();
 } );
 
-it( 'is a no-op when both feature flags are off', function (): void {
+it( 'is a no-op when every feature flag is off', function (): void {
     config( [ 'artisanpack.performance.features.query_optimization' => false ] );
+    config( [ 'artisanpack.performance.database.n1_detection.enabled' => false ] );
     config( [ 'artisanpack.performance.database.slow_query_logging.enabled' => false ] );
 
     [ $middleware, $analyzer, $detector, $logger ] = makeMiddleware();
@@ -59,6 +60,48 @@ it( 'is a no-op when both feature flags are off', function (): void {
 
     expect( $analyzer->isListening() )->toBeFalse();
     expect( $detector->isEnabled() )->toBeFalse();
+    expect( $logger->isEnabled() )->toBeFalse();
+} );
+
+it( 'only enables the analyzer when query_optimization is on', function (): void {
+    config( [ 'artisanpack.performance.features.query_optimization' => true ] );
+    config( [ 'artisanpack.performance.database.n1_detection.enabled' => false ] );
+    config( [ 'artisanpack.performance.database.slow_query_logging.enabled' => false ] );
+
+    [ $middleware, $analyzer, $detector, $logger ] = makeMiddleware();
+
+    $middleware->handle( Request::create( '/posts' ), fn () => response( 'ok' ) );
+
+    expect( $analyzer->isListening() )->toBeTrue();
+    expect( $detector->isEnabled() )->toBeFalse();
+    expect( $logger->isEnabled() )->toBeFalse();
+} );
+
+it( 'only enables the slow query logger when slow_query_logging is on', function (): void {
+    config( [ 'artisanpack.performance.features.query_optimization' => false ] );
+    config( [ 'artisanpack.performance.database.n1_detection.enabled' => false ] );
+    config( [ 'artisanpack.performance.database.slow_query_logging.enabled' => true ] );
+
+    [ $middleware, $analyzer, $detector, $logger ] = makeMiddleware();
+
+    $middleware->handle( Request::create( '/posts' ), fn () => response( 'ok' ) );
+
+    expect( $analyzer->isListening() )->toBeFalse();
+    expect( $detector->isEnabled() )->toBeFalse();
+    expect( $logger->isEnabled() )->toBeTrue();
+} );
+
+it( 'only enables the N+1 detector when n1_detection is on', function (): void {
+    config( [ 'artisanpack.performance.features.query_optimization' => false ] );
+    config( [ 'artisanpack.performance.database.n1_detection.enabled' => true ] );
+    config( [ 'artisanpack.performance.database.slow_query_logging.enabled' => false ] );
+
+    [ $middleware, $analyzer, $detector, $logger ] = makeMiddleware();
+
+    $middleware->handle( Request::create( '/posts' ), fn () => response( 'ok' ) );
+
+    expect( $analyzer->isListening() )->toBeFalse();
+    expect( $detector->isEnabled() )->toBeTrue();
     expect( $logger->isEnabled() )->toBeFalse();
 } );
 

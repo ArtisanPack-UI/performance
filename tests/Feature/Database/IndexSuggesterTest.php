@@ -173,22 +173,83 @@ it( 'writes a migration file when --migration is passed', function (): void {
         'route'            => null,
     ] );
 
-    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'perf-index-suggester-' . uniqid( '', true );
+    // --path is restricted to paths inside the application base. Use a
+    // unique subdirectory under base_path() so the test stays isolated.
+    $relative  = 'tests/_tmp/index-suggester-' . uniqid( '', true );
+    $directory = base_path( $relative );
 
-    test()->artisan( 'perf:suggest-indexes', [ '--migration' => true, '--path' => $directory ] )
-        ->assertSuccessful();
+    try {
+        test()->artisan( 'perf:suggest-indexes', [ '--migration' => true, '--path' => $directory ] )
+            ->assertSuccessful();
 
-    $files = glob( $directory . DIRECTORY_SEPARATOR . '*_perf_suggested_indexes.php' );
+        $files = glob( $directory . DIRECTORY_SEPARATOR . '*_perf_suggested_indexes.php' );
 
-    expect( $files )->toHaveCount( 1 );
+        expect( $files )->toHaveCount( 1 );
 
-    $contents = (string) file_get_contents( $files[0] );
-    expect( $contents )->toContain( "Schema::table('posts'" );
-    expect( $contents )->toContain( "\$table->index(['user_id']);" );
-
-    // Cleanup
-    foreach ( $files as $file ) {
-        @unlink( $file );
+        $contents = (string) file_get_contents( $files[0] );
+        expect( $contents )->toContain( "Schema::table('posts'" );
+        expect( $contents )->toContain( "\$table->index(['user_id']);" );
+    } finally {
+        // Cleanup runs even if the assertions above throw, so a failed
+        // run doesn't leave orphan dirs in the repo.
+        foreach ( (array) glob( $directory . DIRECTORY_SEPARATOR . '*' ) as $file ) {
+            @unlink( (string) $file );
+        }
+        @rmdir( $directory );
+        @rmdir( dirname( $directory ) );
     }
-    @rmdir( $directory );
+} );
+
+it( 'rejects --path values that resolve outside the application base path', function (): void {
+    SlowQuery::create( [
+        'query'            => 'SELECT * FROM posts WHERE user_id = ?',
+        'query_normalized' => 'select * from posts where user_id = ?',
+        'bindings'         => [ 1 ],
+        'time_ms'          => 250.0,
+        'connection'       => 'testbench',
+        'file'             => null,
+        'line'             => null,
+        'trace'            => [],
+        'route'            => null,
+    ] );
+
+    $escapePath = '/tmp/perf-index-suggester-' . uniqid( '', true );
+
+    test()->artisan( 'perf:suggest-indexes', [ '--migration' => true, '--path' => $escapePath ] )
+        ->assertFailed();
+
+    expect( file_exists( $escapePath ) )->toBeFalse();
+} );
+
+it( 'gives each migration a unique filename even when invoked back-to-back', function (): void {
+    SlowQuery::create( [
+        'query'            => 'SELECT * FROM posts WHERE user_id = ?',
+        'query_normalized' => 'select * from posts where user_id = ?',
+        'bindings'         => [ 1 ],
+        'time_ms'          => 250.0,
+        'connection'       => 'testbench',
+        'file'             => null,
+        'line'             => null,
+        'trace'            => [],
+        'route'            => null,
+    ] );
+
+    $directory = base_path( 'tests/_tmp/index-suggester-collision-' . uniqid( '', true ) );
+
+    try {
+        test()->artisan( 'perf:suggest-indexes', [ '--migration' => true, '--path' => $directory ] )
+            ->assertSuccessful();
+        test()->artisan( 'perf:suggest-indexes', [ '--migration' => true, '--path' => $directory ] )
+            ->assertSuccessful();
+
+        $files = (array) glob( $directory . DIRECTORY_SEPARATOR . '*_perf_suggested_indexes.php' );
+
+        expect( $files )->toHaveCount( 2 );
+    } finally {
+        foreach ( (array) glob( $directory . DIRECTORY_SEPARATOR . '*' ) as $file ) {
+            @unlink( (string) $file );
+        }
+        @rmdir( $directory );
+        @rmdir( dirname( $directory ) );
+    }
 } );
