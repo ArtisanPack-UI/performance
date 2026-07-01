@@ -87,6 +87,33 @@ class PerformanceDashboard extends Component
     public string $activeTab = 'overview';
 
     /**
+     * Extra CSS classes to append to the outermost dashboard container.
+     *
+     * @since 1.0.0
+     */
+    public string $class = '';
+
+    /**
+     * Extra CSS classes to append to each card/panel.
+     *
+     * @since 1.0.0
+     */
+    public string $cardClasses = '';
+
+    /**
+     * Label overrides supplied by the host application.
+     *
+     * Merged over the default labels resolved at render time so
+     * applications can rename any user-facing string without
+     * republishing the template.
+     *
+     * @since 1.0.0
+     *
+     * @var array<string, string>
+     */
+    public array $labels = [];
+
+    /**
      * Memoized overview rollup for the current render cycle.
      *
      * Lets `buildRecommendations()` reuse the rows `buildOverview()`
@@ -118,9 +145,17 @@ class PerformanceDashboard extends Component
      *
      * @param  Request|null  $request  Bound by Livewire to inspect the URL query.
      * @param  string|null  $defaultDateRange  Optional override for the initial range.
+     * @param  array<string, string>  $labels  Optional label overrides.
+     * @param  string  $class  Extra classes for the outer container.
+     * @param  string  $cardClasses  Extra classes for card/panel wrappers.
      */
-    public function mount( ?Request $request = null, ?string $defaultDateRange = null ): void
-    {
+    public function mount(
+        ?Request $request = null,
+        ?string $defaultDateRange = null,
+        array $labels = [],
+        string $class = '',
+        string $cardClasses = '',
+    ): void {
         $rangeFromUrl = null === $request ? null : $request->query( 'range' );
         $hasUrlRange  = is_string( $rangeFromUrl ) && '' !== $rangeFromUrl;
 
@@ -128,8 +163,11 @@ class PerformanceDashboard extends Component
             $this->dateRange = $defaultDateRange;
         }
 
-        $this->dateRange = $this->resolveRange( $this->dateRange );
-        $this->activeTab = $this->resolveTab( $this->activeTab );
+        $this->dateRange   = $this->resolveRange( $this->dateRange );
+        $this->activeTab   = $this->resolveTab( $this->activeTab );
+        $this->labels      = array_filter( $labels, 'is_string' );
+        $this->class       = $class;
+        $this->cardClasses = $cardClasses;
     }
 
     /**
@@ -180,6 +218,11 @@ class PerformanceDashboard extends Component
      */
     public function render(): View
     {
+        // Compute visible tabs first so any coercion of the active tab
+        // (a hidden tab restored from a URL, say) happens before the
+        // per-tab content branches below make their decision.
+        $visibleTabs = $this->visibleTabs();
+
         $overview        = [];
         $pages           = [];
         $queries         = [];
@@ -198,15 +241,90 @@ class PerformanceDashboard extends Component
             $recommendations = $this->buildRecommendations();
         }
 
-        return view( 'performance::livewire.performance-dashboard', [
+        $data = $this->getViewData( [
             'overview'        => $overview,
             'pages'           => $pages,
             'queries'         => $queries,
             'cacheSummary'    => $cacheSummary,
             'recommendations' => $recommendations,
             'ranges'          => array_keys( self::RANGE_DAYS ),
-            'tabs'            => self::TABS,
+            'tabs'            => $visibleTabs,
+            'resolvedLabels'  => $this->resolveLabels(),
         ] );
+
+        return view( 'performance::livewire.performance-dashboard', $data );
+    }
+
+    /**
+     * Returns the tab keys visible in the current render.
+     *
+     * Each tab can be toggled via `ui.tabs.<name>` in config. Unknown
+     * or falsey entries are treated as hidden; the active tab is
+     * coerced back to the first visible tab if the user's selection
+     * was hidden after the URL was restored.
+     *
+     * @since 1.0.0
+     *
+     * @return array<int, string>
+     */
+    protected function visibleTabs(): array
+    {
+        $config = (array) config( 'artisanpack.performance.ui.tabs', [] );
+
+        $visible = array_values( array_filter(
+            self::TABS,
+            static fn ( string $tab ): bool => (bool) ( $config[ $tab ] ?? true ),
+        ) );
+
+        if ( [] === $visible ) {
+            return [ 'overview' ];
+        }
+
+        if ( ! in_array( $this->activeTab, $visible, true ) ) {
+            $this->activeTab = $visible[0];
+        }
+
+        return $visible;
+    }
+
+    /**
+     * Extension seam for host applications overriding the dashboard.
+     *
+     * A subclass can override this method to inject additional view
+     * variables without duplicating the whole render() pipeline. The
+     * default implementation is the identity function.
+     *
+     * @since 1.0.0
+     *
+     * @param  array<string, mixed>  $data  The base view payload.
+     *
+     * @return array<string, mixed>
+     */
+    protected function getViewData( array $data ): array
+    {
+        return $data;
+    }
+
+    /**
+     * Resolves labels, merging host overrides over defaults.
+     *
+     * Applications can pass a `labels` prop to override any of these
+     * without republishing the dashboard template.
+     *
+     * @since 1.0.0
+     *
+     * @return array<string, string>
+     */
+    protected function resolveLabels(): array
+    {
+        $defaults = [
+            'range_label'    => (string) __( 'Date range' ),
+            'refresh'        => (string) __( 'Refresh' ),
+            'core_vitals'    => (string) __( 'Core Web Vitals' ),
+            'no_metrics'     => (string) __( 'No metrics recorded for this range yet.' ),
+        ];
+
+        return array_merge( $defaults, $this->labels );
     }
 
     /**

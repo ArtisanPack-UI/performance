@@ -401,15 +401,40 @@ return [
     | UI Customization
     |--------------------------------------------------------------------------
     |
-    | Override the layout and partials used by the dashboard. Leave at the
-    | default to use the bundled views; publish them via `vendor:publish`
-    | to customize markup.
+    | Override the layout, tab visibility, chart appearance, and theme
+    | used by the dashboard. Publish the templates via
+    | `php artisan vendor:publish --tag=performance-views` to customize
+    | markup; publish the base stylesheet via
+    | `php artisan vendor:publish --tag=performance-css` to override
+    | the CSS custom properties.
     |
     */
 
     'ui' => [
         'layout' => 'performance::dashboard.layouts.app',
         'theme' => 'default',
+        'tabs' => [
+            'overview' => true,
+            'pages' => true,
+            'images' => true,
+            'cache' => true,
+            'queries' => true,
+            'recommendations' => true,
+        ],
+        'chart' => [
+            'library_url' => 'https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js',
+            'colors' => [
+                'good' => '#22c55e',
+                'needs_improvement' => '#f59e0b',
+                'poor' => '#ef4444',
+            ],
+            'legend' => true,
+            'animation' => true,
+        ],
+        'recommendations' => [
+            'max_per_type' => 5,
+            'show_dismissed_counter' => true,
+        ],
     ],
 
 ];
