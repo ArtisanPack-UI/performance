@@ -99,8 +99,10 @@ class RecommendationEngine
      *
      * A metric whose weighted p75 lands in the poor band is emitted as a
      * high-priority item; anything in "needs improvement" is medium.
-     * We short-circuit metrics with fewer than 10 samples because a
-     * two-request cohort in the poor band is noise, not a signal.
+     * Cohorts below `ui.recommendations.min_samples` are dropped as
+     * noise — the threshold is configurable so low-traffic staging
+     * environments can lower it to 1 and still get warnings while
+     * production sites keep the default anti-noise floor.
      *
      * @since 1.0.0
      *
@@ -116,12 +118,14 @@ class RecommendationEngine
             ->groupBy( 'metric' )
             ->get();
 
+        $minSamples = max( 1, (int) config( 'artisanpack.performance.ui.recommendations.min_samples', 10 ) );
+
         $items = [];
 
         foreach ( $rows as $row ) {
             $count = (int) $row->sample_count;
 
-            if ( $count < 10 ) {
+            if ( $count < $minSamples ) {
                 continue;
             }
 
@@ -238,11 +242,16 @@ class RecommendationEngine
         $items = [];
 
         foreach ( array_slice( $suggestions, 0, 3 ) as $suggestion ) {
+            // IndexSuggester::classifyImpact returns capitalized 'High'/'Medium'/'Low';
+            // normalize to lowercase so the priority check and downstream sort
+            // (which uses PRIORITY_WEIGHT keyed by lowercase) work consistently.
+            $impact = strtolower( (string) ( $suggestion['impact'] ?? 'medium' ) );
+
             $items[] = [
                 'id'          => 'index:' . $suggestion['table'] . ':' . implode( '_', $suggestion['columns'] ),
                 'type'        => 'missing_index',
-                'priority'    => ( $suggestion['impact'] ?? 'medium' ) === 'high' ? 'high' : 'medium',
-                'impact'      => (string) ( $suggestion['impact'] ?? 'medium' ),
+                'priority'    => 'high' === $impact ? 'high' : 'medium',
+                'impact'      => $impact,
                 'title'       => (string) __( 'Missing index on :table', [ 'table' => $suggestion['table'] ] ),
                 'description' => (string) __( 'Add an index covering :columns to speed up matching queries (:count occurrences observed).', [
                     'columns' => implode( ', ', $suggestion['columns'] ),

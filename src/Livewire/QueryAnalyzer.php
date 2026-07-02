@@ -75,9 +75,16 @@ class QueryAnalyzer extends Component
     /**
      * Currently selected date range.
      *
+     * When embedded inside the PerformanceDashboard the parent passes
+     * its own `dateRange` in via `@livewire('perf-query-analyzer',
+     * ['dateRange' => ...])`; the URL alias here is scoped to `qrange`
+     * so a standalone deep-link (or the dev-app test surface) still
+     * survives page reloads without clobbering the dashboard's own
+     * `?range=` state.
+     *
      * @since 1.0.0
      */
-    #[Url( as: 'range', history: true )]
+    #[Url( as: 'qrange', history: true )]
     public string $dateRange = '7d';
 
     /**
@@ -85,7 +92,7 @@ class QueryAnalyzer extends Component
      *
      * @since 1.0.0
      */
-    #[Url( as: 'route', history: true )]
+    #[Url( as: 'qroute', history: true )]
     public string $routeFilter = '';
 
     /**
@@ -97,7 +104,7 @@ class QueryAnalyzer extends Component
      *
      * @since 1.0.0
      */
-    #[Url( as: 'min', history: true )]
+    #[Url( as: 'qmin', history: true )]
     public int $minTimeMs = 0;
 
     /**
@@ -105,7 +112,7 @@ class QueryAnalyzer extends Component
      *
      * @since 1.0.0
      */
-    #[Url( as: 'sort', history: true )]
+    #[Url( as: 'qsort', history: true )]
     public string $sort = 'time';
 
     /**
@@ -125,23 +132,31 @@ class QueryAnalyzer extends Component
     public ?string $expandedSignature = null;
 
     /**
-     * Mounts the component with optional label overrides.
+     * Mounts the component with optional label overrides and a parent
+     * date-range prop.
      *
      * The URL-bound properties are coerced through their resolvers so a
-     * hostile deep-link (`?range=nonsense&sort=..`) can't park the
-     * component in an invalid state — every render sees the same
-     * validated shape whether or not the URL was fresh.
+     * hostile deep-link (`?qrange=nonsense&qsort=..`) can't park the
+     * component in an invalid state. When the parent passes an explicit
+     * `$dateRange` it overrides any URL-restored value so the two stay
+     * in sync — the PerformanceDashboard owns the canonical range.
      *
      * @since 1.0.0
      *
      * @param  array<string, string>  $labels  Optional label overrides.
+     * @param  string|null  $dateRange  Optional range override from a parent component.
      */
-    public function mount( array $labels = [] ): void
+    public function mount( array $labels = [], ?string $dateRange = null ): void
     {
-        $this->labels      = array_filter( $labels, 'is_string' );
-        $this->dateRange   = $this->resolveRange( $this->dateRange );
-        $this->sort        = $this->resolveSort( $this->sort );
-        $this->minTimeMs   = max( 0, $this->minTimeMs );
+        $this->labels    = array_filter( $labels, 'is_string' );
+
+        if ( null !== $dateRange && '' !== $dateRange ) {
+            $this->dateRange = $dateRange;
+        }
+
+        $this->dateRange = $this->resolveRange( $this->dateRange );
+        $this->sort      = $this->resolveSort( $this->sort );
+        $this->minTimeMs = max( 0, $this->minTimeMs );
     }
 
     /**
@@ -202,6 +217,27 @@ class QueryAnalyzer extends Component
         return response()->streamDownload( static function () use ( $rows ): void {
             $handle = fopen( 'php://output', 'w' );
 
+            // Sanitize fields against CSV formula injection: Excel /
+            // LibreOffice / Google Sheets treat cells starting with
+            // `=`, `+`, `-`, `@`, TAB, or CR as formulas. Captured SQL
+            // (and route/file names) can start with any of those, so
+            // prefix a single quote before writing to break the
+            // formula-detection heuristic without breaking round-trip
+            // parsers.
+            $sanitize = static function ( mixed $value ): string {
+                $string = (string) $value;
+
+                if ( '' === $string ) {
+                    return '';
+                }
+
+                if ( in_array( $string[0], [ '=', '+', '-', '@', "\t", "\r" ], true ) ) {
+                    return "'" . $string;
+                }
+
+                return $string;
+            };
+
             fputcsv( $handle, [
                 'query',
                 'peak_time_ms',
@@ -216,15 +252,15 @@ class QueryAnalyzer extends Component
 
             foreach ( $rows as $row ) {
                 fputcsv( $handle, [
-                    $row['query'],
+                    $sanitize( $row['query'] ),
                     $row['peak_time_ms'],
                     $row['avg_time_ms'],
                     $row['occurrences'],
-                    $row['route'] ?? '',
-                    $row['file'] ?? '',
+                    $sanitize( $row['route'] ?? '' ),
+                    $sanitize( $row['file'] ?? '' ),
                     $row['line'] ?? '',
-                    $row['last_seen'],
-                    $row['suggestion'] ?? '',
+                    $sanitize( $row['last_seen'] ),
+                    $sanitize( $row['suggestion'] ?? '' ),
                 ] );
             }
 
@@ -285,15 +321,16 @@ class QueryAnalyzer extends Component
             ->limit( self::RESULT_LIMIT )
             ->get();
 
-        $suggester   = app( IndexSuggester::class );
-        $suggestions = $this->buildSuggestions( $suggester, $rows->pluck( 'sample_query' )->all() );
+        $samples    = $rows->pluck( 'sample_query' )->all();
+        $suggestion = $this->buildSuggestionMap( $samples );
 
-        return $rows->map( static function ( $row ) use ( $suggestions ): array {
+        return $rows->map( function ( $row ) use ( $suggestion ): array {
             $normalized = (string) $row->query_normalized;
+            $sample     = (string) $row->sample_query;
 
             return [
                 'hash'         => md5( $normalized ),
-                'query'        => (string) $row->sample_query,
+                'query'        => $sample,
                 'normalized'   => $normalized,
                 'peak_time_ms' => (float) $row->peak_time_ms,
                 'avg_time_ms'  => (float) $row->avg_time_ms,
@@ -302,7 +339,7 @@ class QueryAnalyzer extends Component
                 'file'         => $row->file,
                 'line'         => null !== $row->line ? (int) $row->line : null,
                 'last_seen'    => (string) $row->last_seen,
-                'suggestion'   => $suggestions[ $normalized ] ?? null,
+                'suggestion'   => $this->lookupSuggestion( $suggestion, $sample ),
             ];
         } )->all();
     }
@@ -357,60 +394,96 @@ class QueryAnalyzer extends Component
     }
 
     /**
-     * Builds a `normalized => suggestion` map for the queries being shown.
+     * Builds the batch suggestion map — table => formatted suggestion.
      *
-     * `IndexSuggester::suggest()` groups candidates by table+columns
-     * across the whole set, so we cannot map back to the original
-     * signatures once it returns. Instead we run each signature through
-     * `extractCandidates` individually — this is what the CLI command
-     * does when it needs per-signature attribution.
+     * `IndexSuggester::suggest()` aggregates candidates by table+columns
+     * across the whole sample set, so calling it once with every sample
+     * preserves the frequency-based impact classification. Per-row
+     * `suggest([$sample])` calls would collapse every candidate to
+     * `impact='Low'` because a single query is never frequent enough
+     * to promote itself to High.
+     *
+     * The returned map is keyed by table name so a row's lookup only
+     * needs to know which table the SQL touches (a cheap regex on the
+     * FROM clause). If a sample SQL touches two tables, the
+     * highest-impact suggestion wins for each.
      *
      * @since 1.0.0
      *
-     * @param  IndexSuggester  $suggester  Injected suggester service.
-     * @param  array<int, string>  $queries  Sample queries to analyze.
+     * @param  array<int, string>  $samples  Sample SQL strings from the rendered rows.
      *
-     * @return array<string, string>
+     * @return array<string, array{suggestion: string, weight: int}>
      */
-    protected function buildSuggestions( IndexSuggester $suggester, array $queries ): array
+    protected function buildSuggestionMap( array $samples ): array
     {
+        $samples = array_values( array_filter(
+            array_map( 'strval', $samples ),
+            static fn ( string $s ): bool => '' !== $s,
+        ) );
+
+        if ( [] === $samples ) {
+            return [];
+        }
+
+        $suggestions = app( IndexSuggester::class )->suggest( $samples );
+
+        // Rank so higher-impact wins on ties when multiple suggestions
+        // reference the same table.
+        $weights = [ 'high' => 3, 'medium' => 2, 'low' => 1 ];
+
         $out = [];
 
-        foreach ( $queries as $sample ) {
-            $sample = (string) $sample;
+        foreach ( $suggestions as $suggestion ) {
+            $table  = (string) ( $suggestion['table'] ?? '' );
+            $impact = strtolower( (string) ( $suggestion['impact'] ?? 'medium' ) );
 
-            if ( '' === $sample ) {
+            if ( '' === $table ) {
                 continue;
             }
 
-            $suggestions = $suggester->suggest( [ $sample ] );
+            $weight = $weights[ $impact ] ?? 0;
 
-            if ( [] === $suggestions ) {
+            if ( isset( $out[ $table ] ) && $out[ $table ]['weight'] >= $weight ) {
                 continue;
             }
 
-            $normalized         = $this->normalizeForKey( $sample );
-            $out[ $normalized ] = $this->formatSuggestion( $suggestions[0] );
+            $out[ $table ] = [
+                'suggestion' => $this->formatSuggestion( $suggestion ),
+                'weight'     => $weight,
+            ];
         }
 
         return $out;
     }
 
     /**
-     * Returns a normalized signature that keys back into the grouped rows.
+     * Looks up the batched suggestion for a single row's sample SQL.
      *
-     * The stored `query_normalized` column comes from
-     * `Database\QueryAnalyzer::normalize()` — reusing the analyzer's
-     * canonicalization keeps both sides in lockstep so a signature
-     * emitted by the suggester matches a row shown in the table.
+     * Matches on the first `FROM <table>` token in the sample; if the
+     * suggestion map has an entry for that table, we return its
+     * formatted hint. This is enough for the vast majority of queries
+     * the panel shows (single-table SELECTs with an optional WHERE),
+     * and avoids the cost of re-parsing the SQL for a full candidate
+     * extraction per row.
      *
      * @since 1.0.0
      *
-     * @param  string  $sample  Raw sample SQL.
+     * @param  array<string, array{suggestion: string, weight: int}>  $suggestionMap  Batch map from buildSuggestionMap().
+     * @param  string  $sample  Raw sample SQL for the row.
      */
-    protected function normalizeForKey( string $sample ): string
+    protected function lookupSuggestion( array $suggestionMap, string $sample ): ?string
     {
-        return app( \ArtisanPackUI\Performance\Database\QueryAnalyzer::class )->normalize( $sample );
+        if ( [] === $suggestionMap || '' === $sample ) {
+            return null;
+        }
+
+        if ( 1 !== preg_match( '/\bfrom\s+`?([a-z_][a-z0-9_]*)`?/i', $sample, $matches ) ) {
+            return null;
+        }
+
+        $table = strtolower( $matches[1] );
+
+        return $suggestionMap[ $table ]['suggestion'] ?? null;
     }
 
     /**
@@ -474,24 +547,31 @@ class QueryAnalyzer extends Component
     protected function resolveLabels(): array
     {
         $defaults = [
-            'title'         => (string) __( 'Query Analyzer' ),
-            'range'         => (string) __( 'Date range' ),
-            'route'         => (string) __( 'Route' ),
-            'min_time'      => (string) __( 'Min time (ms)' ),
-            'sort_time'     => (string) __( 'Sort by time' ),
-            'sort_freq'     => (string) __( 'Sort by frequency' ),
-            'export'        => (string) __( 'Export CSV' ),
-            'query'         => (string) __( 'Query' ),
-            'time'          => (string) __( 'Time (ms)' ),
-            'count'         => (string) __( 'Count' ),
-            'file'          => (string) __( 'File:Line' ),
-            'suggestion'    => (string) __( 'Suggestion' ),
-            'all_routes'    => (string) __( 'All routes' ),
-            'empty'         => (string) __( 'No slow queries logged for this range.' ),
-            'show_full'     => (string) __( 'Show full query' ),
-            'hide_full'     => (string) __( 'Hide full query' ),
+            'title'      => (string) __( 'Query Analyzer' ),
+            'range'      => (string) __( 'Date range' ),
+            'route'      => (string) __( 'Route' ),
+            'min_time'   => (string) __( 'Min time (ms)' ),
+            'sort_time'  => (string) __( 'Sort by time' ),
+            'sort_freq'  => (string) __( 'Sort by frequency' ),
+            'export'     => (string) __( 'Export CSV' ),
+            'query'      => (string) __( 'Query' ),
+            'time'       => (string) __( 'Time (ms)' ),
+            'count'      => (string) __( 'Count' ),
+            'file'       => (string) __( 'File:Line' ),
+            'suggestion' => (string) __( 'Suggestion' ),
+            'all_routes' => (string) __( 'All routes' ),
+            'empty'      => (string) __( 'No slow queries logged for this range.' ),
+            'show_full'  => (string) __( 'Show full query' ),
+            'hide_full'  => (string) __( 'Hide full query' ),
         ];
 
-        return array_merge( $defaults, $this->labels );
+        // Filter here (not just in mount) because Livewire re-hydrates
+        // `$labels` from the client payload on every update, bypassing
+        // the mount-time filter. Without this, a hostile client can
+        // send `labels: { title: {"a": 1} }` and trigger a Blade
+        // "Array to string conversion" error.
+        $safe = array_filter( $this->labels, 'is_string' );
+
+        return array_merge( $defaults, $safe );
     }
 }

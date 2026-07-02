@@ -48,9 +48,16 @@ class RecommendationsPanel extends Component
     /**
      * The currently selected date range.
      *
+     * When embedded inside the PerformanceDashboard the parent passes
+     * its own `dateRange` in via `@livewire('perf-recommendations-panel',
+     * ['dateRange' => ...])`; the URL alias here is scoped to `rrange`
+     * so a standalone deep-link (or the dev-app test surface) still
+     * survives page reloads without clobbering the dashboard's own
+     * `?range=` state.
+     *
      * @since 1.0.0
      */
-    #[Url( as: 'range', history: true )]
+    #[Url( as: 'rrange', history: true )]
     public string $dateRange = '7d';
 
     /**
@@ -86,7 +93,24 @@ class RecommendationsPanel extends Component
     public bool $statusIsError = false;
 
     /**
-     * Mounts the component with optional label overrides.
+     * Memoized recommendation list for the current render cycle.
+     *
+     * Both `render()` and `applyAction()` (via `findById()`) need the
+     * same list; without memoization each click issues the underlying
+     * aggregate queries twice, and if config drifts between the two
+     * builds `findById()` can return "no longer available" for an item
+     * the user just saw. The cache is a per-request property, so it
+     * naturally resets between Livewire round-trips.
+     *
+     * @since 1.0.0
+     *
+     * @var array<int, array<string, mixed>>|null
+     */
+    protected ?array $itemsCache = null;
+
+    /**
+     * Mounts the component with optional label overrides and a parent
+     * date-range prop.
      *
      * Dismissals are hydrated from the session so a user who dismissed
      * an item on the previous request doesn't see it flash back in on
@@ -95,10 +119,16 @@ class RecommendationsPanel extends Component
      * @since 1.0.0
      *
      * @param  array<string, string>  $labels  Optional label overrides.
+     * @param  string|null  $dateRange  Optional range override from a parent component.
      */
-    public function mount( array $labels = [] ): void
+    public function mount( array $labels = [], ?string $dateRange = null ): void
     {
-        $this->labels    = array_filter( $labels, 'is_string' );
+        $this->labels = array_filter( $labels, 'is_string' );
+
+        if ( null !== $dateRange && '' !== $dateRange ) {
+            $this->dateRange = $dateRange;
+        }
+
         $this->dismissed = array_values( array_filter(
             (array) Session::get( self::DISMISSAL_KEY, [] ),
             'is_string',
@@ -122,7 +152,16 @@ class RecommendationsPanel extends Component
             $this->dismissed[] = $id;
         }
 
-        Session::put( self::DISMISSAL_KEY, $this->dismissed );
+        // Filter here (not just in mount) because Livewire re-hydrates
+        // `$dismissed` from the client payload on every update, bypassing
+        // the mount-time filter. Without this, a hostile client could
+        // persist arbitrary (potentially large) values to the session
+        // via dismiss().
+        $safe = array_values( array_filter( $this->dismissed, 'is_string' ) );
+
+        $this->dismissed = $safe;
+
+        Session::put( self::DISMISSAL_KEY, $safe );
     }
 
     /**
@@ -185,7 +224,7 @@ class RecommendationsPanel extends Component
      */
     public function render(): View
     {
-        $items = app( RecommendationEngine::class )->build( $this->dateRange );
+        $items = $this->buildItems();
 
         $visible = array_values( array_filter( $items, fn ( array $item ): bool => ! in_array( $item['id'], $this->dismissed, true ) ) );
 
@@ -211,15 +250,30 @@ class RecommendationsPanel extends Component
      */
     protected function findById( string $id ): ?array
     {
-        $items = app( RecommendationEngine::class )->build( $this->dateRange );
-
-        foreach ( $items as $item ) {
+        foreach ( $this->buildItems() as $item ) {
             if ( ( $item['id'] ?? '' ) === $id ) {
                 return $item;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Returns the memoized recommendation list for this request cycle.
+     *
+     * The engine's `build()` runs several aggregate queries; render()
+     * and findById() both need the same result, and stale-lookup risk
+     * (config changing between the two calls) is real. Memoize the
+     * list on the component so both callers see the same shape.
+     *
+     * @since 1.0.0
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function buildItems(): array
+    {
+        return $this->itemsCache ??= app( RecommendationEngine::class )->build( $this->dateRange );
     }
 
     /**
@@ -331,6 +385,12 @@ class RecommendationsPanel extends Component
             'manual_steps'    => (string) __( 'Manual steps' ),
         ];
 
-        return array_merge( $defaults, $this->labels );
+        // Filter on every render because Livewire re-hydrates `$labels`
+        // from the client payload with no validation of the array-shape
+        // PHPDoc — a non-string value would otherwise trigger an
+        // "Array to string conversion" in Blade.
+        $safe = array_filter( $this->labels, 'is_string' );
+
+        return array_merge( $defaults, $safe );
     }
 }

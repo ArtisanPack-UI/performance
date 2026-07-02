@@ -21,11 +21,11 @@ namespace ArtisanPackUI\Performance\Livewire;
 
 use ArtisanPackUI\Performance\Cache\CacheStatistics;
 use ArtisanPackUI\Performance\Models\PerformanceMetric;
-use ArtisanPackUI\Performance\Models\SlowQuery;
 use ArtisanPackUI\Performance\Monitoring\WebVitals;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -114,21 +114,6 @@ class PerformanceDashboard extends Component
     public array $labels = [];
 
     /**
-     * Memoized overview rollup for the current render cycle.
-     *
-     * Lets `buildRecommendations()` reuse the rows `buildOverview()`
-     * already computed without re-issuing the aggregate query — Livewire
-     * components are short-lived (one per server request), so the cache
-     * lives exactly as long as a single render and cannot serve stale
-     * data across user actions.
-     *
-     * @since 1.0.0
-     *
-     * @var array<int, array{metric: string, p75: float|null, sample_count: int, status: string}>|null
-     */
-    protected ?array $overviewCache = null;
-
-    /**
      * Mounts the component, applying the default range when none is supplied.
      *
      * Validation is intentionally loose: an unknown range or tab is
@@ -183,6 +168,25 @@ class PerformanceDashboard extends Component
     }
 
     /**
+     * Handles `performance:navigate` from child components (e.g. the
+     * RecommendationsPanel's "view-query-analyzer" one-click action)
+     * by switching the active tab.
+     *
+     * The event name is package-namespaced so a host application can
+     * also listen for it without clashing with unrelated
+     * `navigate` events elsewhere in the app.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $tab  Target tab key sent by the dispatching child.
+     */
+    #[On( 'performance:navigate' )]
+    public function navigateToTab( string $tab ): void
+    {
+        $this->activeTab = $this->resolveTab( $tab );
+    }
+
+    /**
      * Switches the active date range.
      *
      * @since 1.0.0
@@ -223,33 +227,30 @@ class PerformanceDashboard extends Component
         // per-tab content branches below make their decision.
         $visibleTabs = $this->visibleTabs();
 
-        $overview        = [];
-        $pages           = [];
-        $queries         = [];
-        $cacheSummary    = [ 'page' => [ 'entries' => 0 ], 'fragment' => [ 'entries' => 0, 'tags' => 0 ] ];
-        $recommendations = [];
+        $overview     = [];
+        $pages        = [];
+        $cacheSummary = [ 'page' => [ 'entries' => 0 ], 'fragment' => [ 'entries' => 0, 'tags' => 0 ] ];
 
+        // Only the overview/pages/cache tabs are built here — the queries
+        // and recommendations tabs delegate entirely to embedded Livewire
+        // child components (perf-query-analyzer, perf-recommendations-panel)
+        // which own their own data fetching. Duplicating the work here
+        // would just double the SQL round-trips per render.
         if ( 'overview' === $this->activeTab ) {
-            $overview = $this->overview();
+            $overview = $this->buildOverview();
         } elseif ( 'pages' === $this->activeTab ) {
             $pages = $this->buildPagesBreakdown();
-        } elseif ( 'queries' === $this->activeTab ) {
-            $queries = $this->buildQuerySummary();
         } elseif ( 'cache' === $this->activeTab ) {
             $cacheSummary = $this->buildCacheSummary();
-        } elseif ( 'recommendations' === $this->activeTab ) {
-            $recommendations = $this->buildRecommendations();
         }
 
         $data = $this->getViewData( [
-            'overview'        => $overview,
-            'pages'           => $pages,
-            'queries'         => $queries,
-            'cacheSummary'    => $cacheSummary,
-            'recommendations' => $recommendations,
-            'ranges'          => array_keys( self::RANGE_DAYS ),
-            'tabs'            => $visibleTabs,
-            'resolvedLabels'  => $this->resolveLabels(),
+            'overview'       => $overview,
+            'pages'          => $pages,
+            'cacheSummary'   => $cacheSummary,
+            'ranges'         => array_keys( self::RANGE_DAYS ),
+            'tabs'           => $visibleTabs,
+            'resolvedLabels' => $this->resolveLabels(),
         ] );
 
         return view( 'performance::livewire.performance-dashboard', $data );
@@ -276,10 +277,17 @@ class PerformanceDashboard extends Component
             static fn ( string $tab ): bool => (bool) ( $config[ $tab ] ?? true ),
         ) );
 
+        // Ensure at least one tab is reachable even when every entry is
+        // toggled off — otherwise the render() branches would all miss
+        // and the panel body would be empty.
         if ( [] === $visible ) {
-            return [ 'overview' ];
+            $visible = [ 'overview' ];
         }
 
+        // Coerce the active tab to the first visible one when the URL
+        // (or a stale state) restored a hidden tab. Doing this before the
+        // early-return above would leave the URL and the rendered content
+        // out of sync when every tab is disabled.
         if ( ! in_array( $this->activeTab, $visible, true ) ) {
             $this->activeTab = $visible[0];
         }
@@ -318,29 +326,20 @@ class PerformanceDashboard extends Component
     protected function resolveLabels(): array
     {
         $defaults = [
-            'range_label'    => (string) __( 'Date range' ),
-            'refresh'        => (string) __( 'Refresh' ),
-            'core_vitals'    => (string) __( 'Core Web Vitals' ),
-            'no_metrics'     => (string) __( 'No metrics recorded for this range yet.' ),
+            'range_label' => (string) __( 'Date range' ),
+            'refresh'     => (string) __( 'Refresh' ),
+            'core_vitals' => (string) __( 'Core Web Vitals' ),
+            'no_metrics'  => (string) __( 'No metrics recorded for this range yet.' ),
         ];
 
-        return array_merge( $defaults, $this->labels );
-    }
+        // Livewire re-hydrates `$labels` from the client payload on every
+        // update, so filtering inside mount() alone is not sufficient —
+        // a hostile client could send a non-string value in a payload
+        // and produce an "Array to string conversion" in Blade. Filter
+        // here so every render is safe regardless of hydration path.
+        $safe = array_filter( $this->labels, 'is_string' );
 
-    /**
-     * Returns the memoized overview payload, computing it on first call.
-     *
-     * Both the Overview tab and the Recommendations tab need the same
-     * rollup; memoization avoids a second copy of the aggregate query
-     * within a single render cycle.
-     *
-     * @since 1.0.0
-     *
-     * @return array<int, array{metric: string, p75: float|null, sample_count: int, status: string}>
-     */
-    protected function overview(): array
-    {
-        return $this->overviewCache ??= $this->buildOverview();
+        return array_merge( $defaults, $safe );
     }
 
     /**
@@ -421,32 +420,6 @@ class PerformanceDashboard extends Component
     }
 
     /**
-     * Builds the Queries tab payload.
-     *
-     * @since 1.0.0
-     *
-     * @return array<int, array{query: string, time_ms: float, route: string|null}>
-     */
-    protected function buildQuerySummary(): array
-    {
-        if ( ! class_exists( SlowQuery::class ) ) {
-            return [];
-        }
-
-        return SlowQuery::query()
-            ->where( 'created_at', '>=', $this->startDate()->startOfDay() )
-            ->orderByDesc( 'time_ms' )
-            ->limit( 25 )
-            ->get( [ 'query_normalized', 'time_ms', 'route' ] )
-            ->map( static fn ( SlowQuery $row ): array => [
-                'query'   => $row->query_normalized,
-                'time_ms' => (float) $row->time_ms,
-                'route'   => $row->route,
-            ] )
-            ->all();
-    }
-
-    /**
      * Builds the Cache tab summary (counts only — actions live on CacheManager).
      *
      * @since 1.0.0
@@ -461,59 +434,6 @@ class PerformanceDashboard extends Component
             'page'     => $statistics->pageSummary(),
             'fragment' => $statistics->fragmentSummary(),
         ];
-    }
-
-    /**
-     * Builds the Recommendations tab payload.
-     *
-     * The list is derived from the same data shown in the Overview tab —
-     * any metric whose rolling p75 lands outside the "good" band becomes
-     * an actionable item with a brief remediation hint. This keeps the
-     * recommendations grounded in real data instead of a static list.
-     *
-     * @since 1.0.0
-     *
-     * @return array<int, array{title: string, severity: string, body: string}>
-     */
-    protected function buildRecommendations(): array
-    {
-        $items = [];
-
-        foreach ( $this->overview() as $row ) {
-            if ( 'poor' !== $row['status'] && 'needs-improvement' !== $row['status'] ) {
-                continue;
-            }
-
-            $items[] = [
-                'title'    => 'poor' === $row['status']
-                    ? (string) __( ':metric is poor', [ 'metric' => $row['metric'] ] )
-                    : (string) __( ':metric needs improvement', [ 'metric' => $row['metric'] ] ),
-                'severity' => 'poor' === $row['status'] ? 'high' : 'medium',
-                'body'     => $this->remediationFor( $row['metric'] ),
-            ];
-        }
-
-        return $items;
-    }
-
-    /**
-     * Returns a short remediation hint for the given metric.
-     *
-     * @since 1.0.0
-     *
-     * @param  string  $metric  Metric name.
-     */
-    protected function remediationFor( string $metric ): string
-    {
-        return match ( $metric ) {
-            'LCP'   => (string) __( 'Optimize the largest element above the fold: preload its image, prioritize its CSS, and serve modern formats.' ),
-            'INP'   => (string) __( 'Reduce long tasks on the main thread and split heavy JavaScript into deferred or async chunks.' ),
-            'CLS'   => (string) __( 'Reserve space for images, ads, and embeds; avoid inserting content above existing content after load.' ),
-            'FID'   => (string) __( 'Defer non-critical JavaScript and split long tasks so the main thread stays responsive to early input.' ),
-            'TTFB'  => (string) __( 'Enable page caching, tune database queries, and ensure the origin responds quickly to first byte requests.' ),
-            'FCP'   => (string) __( 'Inline critical CSS, preconnect to required origins, and reduce blocking resources in the document head.' ),
-            default => (string) __( 'Review the metric definition and audit relevant page resources.' ),
-        };
     }
 
     /**

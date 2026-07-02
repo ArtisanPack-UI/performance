@@ -63,3 +63,44 @@ it( 'still shows overview when every tab is disabled', function (): void {
     Livewire::test( PerformanceDashboard::class )
         ->assertSet( 'activeTab', 'overview' );
 } );
+
+it( 'coerces the active tab even when the fallback is the only visible tab', function (): void {
+    // Prior to the fix visibleTabs() early-returned before coercing
+    // the active tab. Combined with a URL-restored `?tab=pages`, the
+    // tab strip would render only 'Overview' while the panel body
+    // still rendered Pages content.
+    config( [
+        'artisanpack.performance.ui.tabs.overview'        => false,
+        'artisanpack.performance.ui.tabs.pages'           => false,
+        'artisanpack.performance.ui.tabs.images'          => false,
+        'artisanpack.performance.ui.tabs.cache'           => false,
+        'artisanpack.performance.ui.tabs.queries'         => false,
+        'artisanpack.performance.ui.tabs.recommendations' => false,
+    ] );
+
+    Livewire::test( PerformanceDashboard::class )
+        ->set( 'activeTab', 'pages' )
+        ->assertSet( 'activeTab', 'overview' );
+} );
+
+it( 'switches tabs when a child dispatches performance:navigate', function (): void {
+    // Reflects the child RecommendationsPanel's `view-query-analyzer`
+    // action. Before the #[On] listener existed the dispatch was a
+    // no-op — the parent's activeTab stayed put.
+    Livewire::test( PerformanceDashboard::class )
+        ->assertSet( 'activeTab', 'overview' )
+        ->dispatch( 'performance:navigate', tab: 'queries' )
+        ->assertSet( 'activeTab', 'queries' );
+} );
+
+it( 'rejects a hostile non-string label value on re-hydration', function (): void {
+    // A malicious client can send $wire.set('labels', {...}) with
+    // non-string values. The old code filtered only inside mount(),
+    // so subsequent hydrations propagated an array to Blade and
+    // triggered "Array to string conversion". resolveLabels() now
+    // re-filters on every render.
+    Livewire::test( PerformanceDashboard::class )
+        ->set( 'labels', [ 'refresh' => [ 'evil' => 1 ] ] )
+        ->assertOk()
+        ->assertSee( 'Refresh' );
+} );

@@ -97,6 +97,57 @@ it( 'promotes slow queries above 5x threshold to high priority', function (): vo
         ->and( $slow[0]['priority'] )->toBe( 'high' );
 } );
 
+it( 'promotes a missing-index recommendation to high priority when the suggester classifies it High', function (): void {
+    // IndexSuggester classifies impact as capitalized 'High' when a
+    // signature repeats >=5 times. Before the fix the engine compared
+    // strictly against lowercase 'high', so every missing-index
+    // recommendation was capped at 'medium'.
+    for ( $i = 1; $i <= 6; $i++ ) {
+        SlowQuery::create( [
+            'query'            => "select * from users where email = 'a{$i}'",
+            'query_normalized' => 'select * from users where email = ?',
+            'time_ms'          => 200.0,
+            'connection'       => 'testbench',
+            'created_at'       => Carbon::now()->subMinutes( $i ),
+            'updated_at'       => Carbon::now()->subMinutes( $i ),
+        ] );
+    }
+
+    $items = ( new RecommendationEngine )->build();
+
+    $missing = array_values( array_filter( $items, static fn ( array $item ): bool => 'missing_index' === $item['type'] ) );
+
+    expect( $missing )->not->toBeEmpty()
+        ->and( $missing[0]['priority'] )->toBe( 'high' )
+        ->and( $missing[0]['impact'] )->toBe( 'high' );
+} );
+
+it( 'honors the configurable min_samples threshold for web-vital cohorts', function (): void {
+    // Prior to the fix the guard was hardcoded at 10 samples, which
+    // suppressed poor-band metrics on low-traffic staging without any
+    // way to lower the floor. Lowering the config value should surface
+    // a 5-sample poor cohort.
+    config( [ 'artisanpack.performance.ui.recommendations.min_samples' => 1 ] );
+
+    PerformanceMetric::create( [
+        'date'         => '2026-06-30',
+        'route'        => 'home',
+        'metric'       => 'LCP',
+        'p50'          => 6000,
+        'p75'          => 6000,
+        'p90'          => 6000,
+        'p99'          => 6000,
+        'sample_count' => 5,
+    ] );
+
+    $items = ( new RecommendationEngine )->build();
+
+    $vital = array_values( array_filter( $items, static fn ( array $item ): bool => 'web_vital' === $item['type'] ) );
+
+    expect( $vital )->not->toBeEmpty()
+        ->and( $vital[0]['priority'] )->toBe( 'high' );
+} );
+
 it( 'emits a cache-warm recommendation when the store is empty and enabled', function (): void {
     // The engine only emits the "cache is empty" recommendation when
     // there's evidence traffic is happening — a metric row satisfies

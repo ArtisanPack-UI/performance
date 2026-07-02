@@ -93,7 +93,7 @@
                             </code>
                             <button
                                 type="button"
-                                wire:click="toggleExpanded('{{ $row['hash'] }}')"
+                                wire:click="toggleExpanded({{ \Illuminate\Support\Js::from( $row['hash'] ) }})"
                                 class="performance-query-analyzer__toggle"
                             >{{ $expandedSignature === $row['hash'] ? $resolvedLabels['hide_full'] : $resolvedLabels['show_full'] }}</button>
                         </td>

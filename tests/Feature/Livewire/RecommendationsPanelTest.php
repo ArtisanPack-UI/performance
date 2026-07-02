@@ -149,6 +149,34 @@ it( 'dispatches a navigation event for the view-query-analyzer action', function
         ->assertDispatched( 'performance:navigate', tab: 'queries' );
 } );
 
+it( 'strips non-string values before persisting dismissals to the session', function (): void {
+    // A hostile client can push non-string values into the public
+    // $dismissed array via a Livewire update. dismiss() must filter
+    // before writing to the session so we don't persist junk that
+    // could bloat storage or trip downstream string casts.
+    Livewire::test( RecommendationsPanel::class )
+        ->set( 'dismissed', [ 'metric:LCP', [ 'evil' ], 42 ] )
+        ->call( 'dismiss', 'cache:page_disabled' );
+
+    expect( Session::get( RecommendationsPanel::DISMISSAL_KEY ) )
+        ->toBe( [ 'metric:LCP', 'cache:page_disabled' ] );
+} );
+
+it( 'rejects a hostile non-string label value on re-hydration', function (): void {
+    // Seed a recommendation so the 'Apply fix' label actually renders.
+    config( [ 'artisanpack.performance.page_cache.enabled' => false ] );
+
+    Livewire::test( RecommendationsPanel::class )
+        ->set( 'labels', [ 'title' => [ 'evil' => 1 ] ] )
+        ->assertOk()
+        ->assertSee( 'Recommendations' );
+} );
+
+it( 'accepts a parent-passed dateRange prop that overrides the URL default', function (): void {
+    Livewire::test( RecommendationsPanel::class, [ 'dateRange' => '30d' ] )
+        ->assertSet( 'dateRange', '30d' );
+} );
+
 it( 'merges host-supplied labels over defaults', function (): void {
     Livewire::test( RecommendationsPanel::class, [
         'labels' => [

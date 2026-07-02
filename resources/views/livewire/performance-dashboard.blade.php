@@ -161,9 +161,7 @@
 
             @livewire('perf-cache-manager')
         @elseif($activeTab === 'queries')
-            <h2 class="performance-dashboard__heading">{{ __( 'Slow Queries' ) }}</h2>
-
-            @livewire('perf-query-analyzer')
+            @livewire('perf-query-analyzer', [ 'dateRange' => $dateRange ])
         @elseif($activeTab === 'recommendations')
             @livewire('perf-recommendations-panel', [ 'dateRange' => $dateRange ])
         @endif

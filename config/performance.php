@@ -434,6 +434,11 @@ return [
         'recommendations' => [
             'max_per_type' => 5,
             'show_dismissed_counter' => true,
+            // Minimum sample_count per metric cohort before it becomes a
+            // recommendation. Filters out low-traffic noise. Set to 1 on
+            // staging or low-traffic environments where every poor sample
+            // matters.
+            'min_samples' => 10,
         ],
     ],
 

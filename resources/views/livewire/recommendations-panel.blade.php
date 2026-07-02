@@ -72,14 +72,14 @@
                         @if(!empty($item['action']))
                             <button
                                 type="button"
-                                wire:click="applyAction('{{ $item['id'] }}')"
+                                wire:click="applyAction({{ \Illuminate\Support\Js::from( $item['id'] ) }})"
                                 class="performance-recommendations__apply"
                             >{{ $resolvedLabels['apply'] }}</button>
                         @endif
 
                         <button
                             type="button"
-                            wire:click="dismiss('{{ $item['id'] }}')"
+                            wire:click="dismiss({{ \Illuminate\Support\Js::from( $item['id'] ) }})"
                             class="performance-recommendations__dismiss"
                         >{{ $resolvedLabels['dismiss'] }}</button>
                     </div>

