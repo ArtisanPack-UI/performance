@@ -1,8 +1,12 @@
-<div class="performance-dashboard" data-testid="performance-dashboard">
+<div @class([ 'performance-dashboard', $class ]) data-testid="performance-dashboard">
     @isset($header)
-        <div class="performance-dashboard__header">
+        <div @class([ 'performance-dashboard__header', $cardClasses ])>
             {{ $header }}
         </div>
+    @endisset
+
+    @isset($beforeMetrics)
+        {{ $beforeMetrics }}
     @endisset
 
     @php
@@ -50,7 +54,7 @@
             wire:click="refreshMetrics"
             class="performance-dashboard__refresh"
         >
-            {{ __( 'Refresh' ) }}
+            {{ $resolvedLabels['refresh'] ?? __( 'Refresh' ) }}
         </button>
     </div>
 
@@ -157,51 +161,15 @@
 
             @livewire('perf-cache-manager')
         @elseif($activeTab === 'queries')
-            <h2 class="performance-dashboard__heading">{{ __( 'Slow Queries' ) }}</h2>
-
-            @if(empty($queries))
-                <p class="performance-dashboard__empty">{{ __( 'No slow queries logged for this range.' ) }}</p>
-            @else
-                <table class="performance-dashboard__table" data-testid="queries-table">
-                    <thead>
-                        <tr>
-                            <th>{{ __( 'Query' ) }}</th>
-                            <th>{{ __( 'Time (ms)' ) }}</th>
-                            <th>{{ __( 'Route' ) }}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($queries as $row)
-                            <tr wire:key="query-{{ $loop->index }}">
-                                <td><code>{{ \Illuminate\Support\Str::limit( $row['query'], 120 ) }}</code></td>
-                                <td>{{ number_format( $row['time_ms'], 2 ) }}</td>
-                                <td>{{ $row['route'] ?? '—' }}</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            @endif
+            @livewire('perf-query-analyzer', [ 'dateRange' => $dateRange ])
         @elseif($activeTab === 'recommendations')
-            <h2 class="performance-dashboard__heading">{{ __( 'Recommendations' ) }}</h2>
-
-            @if(empty($recommendations))
-                <p class="performance-dashboard__empty">{{ __( 'No recommendations at the moment — all tracked metrics are in the good band.' ) }}</p>
-            @else
-                <ul class="performance-dashboard__recommendations">
-                    @foreach($recommendations as $item)
-                        <li wire:key="rec-{{ $loop->index }}" @class([
-                            'performance-dashboard__recommendation',
-                            'is-high' => $item['severity'] === 'high',
-                            'is-medium' => $item['severity'] === 'medium',
-                        ])>
-                            <strong>{{ $item['title'] }}</strong>
-                            <p>{{ $item['body'] }}</p>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
+            @livewire('perf-recommendations-panel', [ 'dateRange' => $dateRange ])
         @endif
     </div>
+
+    @isset($afterRecommendations)
+        {{ $afterRecommendations }}
+    @endisset
 
     @isset($footer)
         <div class="performance-dashboard__footer">

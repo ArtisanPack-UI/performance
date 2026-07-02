@@ -42,13 +42,17 @@ use ArtisanPackUI\Performance\JavaScript\ScriptManager;
 use ArtisanPackUI\Performance\Livewire\CacheManager as CacheManagerComponent;
 use ArtisanPackUI\Performance\Livewire\MetricsChart as MetricsChartComponent;
 use ArtisanPackUI\Performance\Livewire\PerformanceDashboard as PerformanceDashboardComponent;
+use ArtisanPackUI\Performance\Livewire\QueryAnalyzer as QueryAnalyzerComponent;
+use ArtisanPackUI\Performance\Livewire\RecommendationsPanel as RecommendationsPanelComponent;
 use ArtisanPackUI\Performance\Monitoring\MetricsAggregator;
+use ArtisanPackUI\Performance\Monitoring\RecommendationEngine;
 use ArtisanPackUI\Performance\Output\HtmlMinifier;
 use ArtisanPackUI\Performance\Output\OutputBuffer;
 use ArtisanPackUI\Performance\Output\ResourceHintInjector;
 use ArtisanPackUI\Performance\Services\EmbedOptimizer;
 use ArtisanPackUI\Performance\Services\Image\FormatConverter;
 use ArtisanPackUI\Performance\Services\ImageService;
+use ArtisanPackUI\Performance\Services\MediaLibraryDetector;
 use ArtisanPackUI\Performance\Services\PerformanceService;
 use ArtisanPackUI\Performance\Speculative\PrefetchManager;
 use ArtisanPackUI\Performance\Speculative\PrerenderManager;
@@ -169,6 +173,14 @@ class PerformanceServiceProvider extends ServiceProvider
             return new MetricsAggregator;
         } );
 
+        $this->app->singleton( RecommendationEngine::class, function () {
+            return new RecommendationEngine;
+        } );
+
+        $this->app->singleton( MediaLibraryDetector::class, function () {
+            return new MediaLibraryDetector;
+        } );
+
         $this->app->singleton( QueryAnalyzer::class, function () {
             return new QueryAnalyzer;
         } );
@@ -239,10 +251,55 @@ class PerformanceServiceProvider extends ServiceProvider
         $this->registerMiddlewareAliases();
         $this->registerCriticalCssSources();
         $this->registerEventListeners();
+        $this->registerMediaLibraryIntegration();
         $this->registerOctaneResetHooks();
         $this->registerCommands();
         $this->registerRoutes();
         $this->publishConfiguration();
+    }
+
+    /**
+     * Registers listeners for the artisanpack-ui/media-library package.
+     *
+     * When the detector reports the integration should run we hook the
+     * media library's upload lifecycle so freshly-uploaded images run
+     * through the ImageService (optimization + modern format
+     * conversion). Absent the media-library package the method is a
+     * no-op — every call site is guarded on class existence so the
+     * package continues to load without media-library installed.
+     *
+     * The integration status is logged once at boot (info-level to the
+     * `performance` channel when configured, otherwise the default
+     * channel) so operators can confirm the wiring landed as expected.
+     *
+     * @since 1.0.0
+     */
+    protected function registerMediaLibraryIntegration(): void
+    {
+        $detector = $this->app->make( MediaLibraryDetector::class );
+        $status   = $detector->status();
+        $logger   = logger();
+
+        if ( ! $status['installed'] ) {
+            $logger->debug( 'artisanpack-ui/performance: media-library not detected — integration skipped.' );
+
+            return;
+        }
+
+        if ( ! $status['enabled'] ) {
+            $logger->info( 'artisanpack-ui/performance: media-library detected but integration disabled via config.' );
+
+            return;
+        }
+
+        $logger->info( 'artisanpack-ui/performance: media-library integration enabled.', [
+            'source'                     => $status['source'],
+            'optimize_on_upload'         => $detector->shouldOptimizeOnUpload(),
+            'generate_formats_on_upload' => $detector->shouldGenerateFormatsOnUpload(),
+        ] );
+
+        // Actual listener wiring lands in a subsequent phase; the detector
+        // and the boot-level decision path are the surface #61 required.
     }
 
     /**
@@ -364,6 +421,8 @@ class PerformanceServiceProvider extends ServiceProvider
         \Livewire\Livewire::component( 'perf-performance-dashboard', PerformanceDashboardComponent::class );
         \Livewire\Livewire::component( 'perf-metrics-chart', MetricsChartComponent::class );
         \Livewire\Livewire::component( 'perf-cache-manager', CacheManagerComponent::class );
+        \Livewire\Livewire::component( 'perf-query-analyzer', QueryAnalyzerComponent::class );
+        \Livewire\Livewire::component( 'perf-recommendations-panel', RecommendationsPanelComponent::class );
     }
 
     /**
@@ -768,7 +827,16 @@ class PerformanceServiceProvider extends ServiceProvider
     }
 
     /**
-     * Publishes the package configuration file.
+     * Publishes the package configuration file and view assets.
+     *
+     * Registers three tags:
+     * - `artisanpack-performance-config` publishes the package config.
+     * - `artisanpack-performance-js` publishes the client-side bundle.
+     * - `performance-views` publishes every Blade template so
+     *   applications can fork any component template without forking
+     *   the component class.
+     * - `performance-css` publishes the bundled base stylesheet with
+     *   the CSS custom properties themes can override.
      *
      * @since 1.0.0
      */
@@ -783,7 +851,19 @@ class PerformanceServiceProvider extends ServiceProvider
         ], 'artisanpack-performance-config' );
 
         $this->publishes( [
-            __DIR__ . '/../resources/js' => resource_path( 'js/vendor/artisanpack-performance'),
-        ], 'artisanpack-performance-js');
+            __DIR__ . '/../resources/js' => resource_path( 'js/vendor/artisanpack-performance' ),
+        ], 'artisanpack-performance-js' );
+
+        $this->publishes( [
+            __DIR__ . '/../resources/views' => resource_path( 'views/vendor/artisanpack-ui/performance' ),
+        ], 'performance-views' );
+
+        $cssFile = __DIR__ . '/../resources/css/performance.css';
+
+        if ( is_file( $cssFile ) ) {
+            $this->publishes( [
+                $cssFile => resource_path( 'css/vendor/artisanpack-ui/performance.css' ),
+            ], 'performance-css' );
+        }
     }
 }

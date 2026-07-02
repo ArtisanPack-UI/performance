@@ -1,0 +1,150 @@
+/**
+ * ArtisanPack UI Performance — base stylesheet.
+ *
+ * Ships CSS custom properties consumed by the bundled Livewire
+ * templates. Applications can override the values from a wrapping
+ * theme (`:root` or a scoped class) or publish this file via
+ * `php artisan vendor:publish --tag=performance-css` and edit it
+ * in place. The stylesheet is intentionally sparse — enough to
+ * ensure the templates are usable when dropped in unstyled, not
+ * enough to fight a daisyUI / Tailwind / Bootstrap theme.
+ */
+
+:root {
+    /* Surfaces */
+    --perf-color-surface: #ffffff;
+    --perf-color-surface-alt: #f8fafc;
+    --perf-color-border: #e2e8f0;
+    --perf-color-text: #0f172a;
+    --perf-color-muted: #64748b;
+
+    /* Status colors — match Web Vitals classifications */
+    --perf-color-good: #16a34a;
+    --perf-color-needs-improvement: #f59e0b;
+    --perf-color-poor: #dc2626;
+    --perf-color-unknown: #94a3b8;
+
+    /* Priorities */
+    --perf-color-priority-high: #dc2626;
+    --perf-color-priority-medium: #f59e0b;
+    --perf-color-priority-low: #0284c7;
+
+    /* Buttons */
+    --perf-color-button-bg: #0f172a;
+    --perf-color-button-text: #ffffff;
+
+    /* Typography */
+    --perf-font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --perf-font-size-base: 0.9375rem;
+    --perf-font-size-heading: 1.25rem;
+
+    /* Layout */
+    --perf-space-xs: 0.25rem;
+    --perf-space-sm: 0.5rem;
+    --perf-space-md: 1rem;
+    --perf-space-lg: 1.5rem;
+    --perf-radius: 0.5rem;
+    --perf-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --perf-color-surface: #0f172a;
+        --perf-color-surface-alt: #1e293b;
+        --perf-color-border: #334155;
+        --perf-color-text: #f8fafc;
+        --perf-color-muted: #94a3b8;
+
+        --perf-color-good: #4ade80;
+        --perf-color-needs-improvement: #fbbf24;
+        --perf-color-poor: #f87171;
+
+        --perf-color-button-bg: #f8fafc;
+        --perf-color-button-text: #0f172a;
+    }
+}
+
+/* Explicit opt-in dark mode class — for apps that manage the theme
+   toggle themselves rather than deferring to system preference. */
+.perf-theme-dark {
+    --perf-color-surface: #0f172a;
+    --perf-color-surface-alt: #1e293b;
+    --perf-color-border: #334155;
+    --perf-color-text: #f8fafc;
+    --perf-color-muted: #94a3b8;
+
+    --perf-color-good: #4ade80;
+    --perf-color-needs-improvement: #fbbf24;
+    --perf-color-poor: #f87171;
+
+    --perf-color-button-bg: #f8fafc;
+    --perf-color-button-text: #0f172a;
+}
+
+.performance-dashboard,
+.performance-query-analyzer,
+.performance-recommendations,
+.performance-cache-manager {
+    background: var(--perf-color-surface);
+    color: var(--perf-color-text);
+    font-family: var(--perf-font-family);
+    font-size: var(--perf-font-size-base);
+    padding: var(--perf-space-lg);
+    border-radius: var(--perf-radius);
+    box-shadow: var(--perf-shadow);
+}
+
+.performance-dashboard__heading,
+.performance-query-analyzer__heading,
+.performance-recommendations__heading {
+    font-size: var(--perf-font-size-heading);
+    margin: 0 0 var(--perf-space-md);
+}
+
+.performance-dashboard__table,
+.performance-query-analyzer__table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.performance-dashboard__table th,
+.performance-dashboard__table td,
+.performance-query-analyzer__table th,
+.performance-query-analyzer__table td {
+    padding: var(--perf-space-sm) var(--perf-space-md);
+    border-bottom: 1px solid var(--perf-color-border);
+    text-align: left;
+}
+
+.performance-dashboard__badge {
+    display: inline-flex;
+    padding: var(--perf-space-xs) var(--perf-space-sm);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    color: var(--perf-color-button-text);
+}
+
+.performance-dashboard__badge.is-good { background: var(--perf-color-good); }
+.performance-dashboard__badge.is-warning { background: var(--perf-color-needs-improvement); }
+.performance-dashboard__badge.is-danger { background: var(--perf-color-poor); }
+.performance-dashboard__badge.is-muted { background: var(--perf-color-unknown); }
+
+.performance-recommendations__item {
+    border: 1px solid var(--perf-color-border);
+    border-left-width: 4px;
+    border-radius: var(--perf-radius);
+    padding: var(--perf-space-md);
+    margin-bottom: var(--perf-space-md);
+    background: var(--perf-color-surface-alt);
+}
+
+.performance-recommendations__item.is-high { border-left-color: var(--perf-color-priority-high); }
+.performance-recommendations__item.is-medium { border-left-color: var(--perf-color-priority-medium); }
+.performance-recommendations__item.is-low { border-left-color: var(--perf-color-priority-low); }
+
+.performance-recommendations__priority {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--perf-color-muted);
+    letter-spacing: 0.05em;
+}
