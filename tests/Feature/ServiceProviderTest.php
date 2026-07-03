@@ -62,6 +62,24 @@ it( 'registers the perf:generate-webp console command', function (): void {
     expect( $registered )->toContain( 'perf:generate-webp' );
 } );
 
+it( 'boots without throwing when media-library is not installed', function (): void {
+    // The test environment does not depend on artisanpack-ui/media-library so
+    // the provider class does not exist. The Performance service provider
+    // must still boot cleanly — the media library integration path is
+    // guarded on the detector's status.
+    config( [ 'artisanpack.performance.media_library_integration.enabled' => null ] );
+
+    expect( fn () => app()->resolveProvider( PerformanceServiceProvider::class )->boot() )
+        ->not->toThrow( Throwable::class );
+} );
+
+it( 'skips listener wiring when the integration is forced off via config', function (): void {
+    config( [ 'artisanpack.performance.media_library_integration.enabled' => false ] );
+
+    expect( fn () => app()->resolveProvider( PerformanceServiceProvider::class )->boot() )
+        ->not->toThrow( Throwable::class );
+} );
+
 it( 'replaces list-valued config overrides wholesale instead of per-index', function (): void {
     // Regression test: array_replace_recursive would bleed the package defaults
     // through at higher indices (e.g. images.sizes default [320,640,768,1024,1280,1920]
@@ -72,8 +90,8 @@ it( 'replaces list-valued config overrides wholesale instead of per-index', func
 
     app()->resolveProvider( PerformanceServiceProvider::class )->boot();
 
-    expect( config( 'artisanpack.performance.images.sizes'))->toBe( [1200])
-        ->and( config( 'artisanpack.performance.speculative_loading.prefetch.exclude_patterns'))->toBe( ['/private'])
+    expect( config( 'artisanpack.performance.images.sizes' ) )->toBe( [1200] )
+        ->and( config( 'artisanpack.performance.speculative_loading.prefetch.exclude_patterns' ) )->toBe( ['/private'] )
         // Sanity: associative defaults still merge through (driver still resolves).
-        ->and( config( 'artisanpack.performance.images.driver'))->toBe( 'gd');
+        ->and( config( 'artisanpack.performance.images.driver' ) )->toBe( 'gd');
 });

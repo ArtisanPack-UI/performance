@@ -39,6 +39,7 @@ use ArtisanPackUI\Performance\Http\Middleware\MinifyHtml;
 use ArtisanPackUI\Performance\Images\DominantColorExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use ArtisanPackUI\Performance\JavaScript\ScriptManager;
+use ArtisanPackUI\Performance\Listeners\OptimizeUploadedMedia;
 use ArtisanPackUI\Performance\Livewire\CacheManager as CacheManagerComponent;
 use ArtisanPackUI\Performance\Livewire\MetricsChart as MetricsChartComponent;
 use ArtisanPackUI\Performance\Livewire\PerformanceDashboard as PerformanceDashboardComponent;
@@ -298,8 +299,38 @@ class PerformanceServiceProvider extends ServiceProvider
             'generate_formats_on_upload' => $detector->shouldGenerateFormatsOnUpload(),
         ] );
 
-        // Actual listener wiring lands in a subsequent phase; the detector
-        // and the boot-level decision path are the surface #61 required.
+        $this->wireMediaLibraryListeners();
+    }
+
+    /**
+     * Wires the `OptimizeUploadedMedia` listener into the media-library upload path.
+     *
+     * media-library does not (yet) publish a Laravel event on upload, so we
+     * hook Eloquent's `created` model event on its `Media` model — that
+     * fires from every code path that persists a new row (uploads,
+     * seeders, importers). If a future media-library release ships a
+     * dedicated `MediaUploaded` event we listen for that too, so
+     * consumers get the same optimization behavior once they upgrade
+     * without needing to reconfigure anything on our side.
+     *
+     * @since 1.0.0
+     */
+    protected function wireMediaLibraryListeners(): void
+    {
+        $mediaModel = '\ArtisanPackUI\MediaLibrary\Models\Media';
+
+        if ( class_exists( $mediaModel ) && method_exists( $mediaModel, 'created' ) ) {
+            $mediaModel::created( function ( $media ): void {
+                $this->app->make( OptimizeUploadedMedia::class )->handle( $media );
+            } );
+        }
+
+        $uploadedEvent = '\ArtisanPackUI\MediaLibrary\Events\MediaUploaded';
+
+        if ( class_exists( $uploadedEvent ) ) {
+            $events = $this->app->make( 'events' );
+            $events->listen( $uploadedEvent, [ OptimizeUploadedMedia::class, 'handle' ] );
+        }
     }
 
     /**
