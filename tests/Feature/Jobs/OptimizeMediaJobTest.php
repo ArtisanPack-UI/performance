@@ -116,6 +116,74 @@ it( 'marks the row as failed when Laravel calls failed()', function (): void {
     expect( $media->refresh()->optimization_status )->toBe( MediaOptimizationStatus::FAILED );
 } );
 
+it( 'preserves optimized_at when the retry rewrites processing/failed status', function (): void {
+    $earlier = Illuminate\Support\Carbon::parse( '2026-06-20 10:00:00' );
+
+    $media = MediaModelStub::create( [
+        'file_path'           => 'media/1/photo.jpg',
+        'disk'                => 'public',
+        'mime_type'           => 'image/jpeg',
+        'optimization_status' => MediaOptimizationStatus::COMPLETED,
+        'optimized_at'        => $earlier,
+    ] );
+
+    $job = new OptimizeMediaJob( $media );
+
+    // A retry that begins reprocessing must not clear the last-successful
+    // timestamp before the encoder has produced a new one.
+    $reflection = new ReflectionMethod( $job, 'writeStatus' );
+    $reflection->setAccessible( true );
+    $reflection->invoke( $job, MediaOptimizationStatus::PROCESSING );
+
+    $media->refresh();
+
+    expect( $media->optimization_status )->toBe( MediaOptimizationStatus::PROCESSING )
+        ->and( $media->optimized_at->toDateTimeString() )->toBe( $earlier->toDateTimeString() );
+
+    // Same for FAILED — the previously-successful timestamp survives so
+    // dashboards can still show "last successful optimization".
+    $reflection->invoke( $job, MediaOptimizationStatus::FAILED );
+
+    $media->refresh();
+
+    expect( $media->optimization_status )->toBe( MediaOptimizationStatus::FAILED )
+        ->and( $media->optimized_at->toDateTimeString() )->toBe( $earlier->toDateTimeString() );
+} );
+
+it( 'logs a warning when the write-back save() throws instead of silently swallowing', function (): void {
+    $media = MediaModelStub::create( [
+        'file_path'           => 'media/1/photo.jpg',
+        'disk'                => 'public',
+        'mime_type'           => 'image/jpeg',
+        'optimization_status' => MediaOptimizationStatus::PENDING,
+    ] );
+
+    // Force the model into a state where save() throws — override the
+    // connection to one that rejects writes so the job's catch block fires.
+    $failing = new class extends MediaModelStub {
+        public function save( array $options = [] ): bool
+        {
+            throw new RuntimeException( 'simulated DB failure' );
+        }
+    };
+    $failing->exists = true;
+    $failing->setRawAttributes( $media->getAttributes(), true );
+
+    Illuminate\Support\Facades\Log::spy();
+
+    $job        = new OptimizeMediaJob( $failing );
+    $reflection = new ReflectionMethod( $job, 'safelyUpdateAttributes' );
+    $reflection->setAccessible( true );
+    $reflection->invoke( $job, [ 'optimization_status' => MediaOptimizationStatus::PROCESSING ] );
+
+    Illuminate\Support\Facades\Log::shouldHaveReceived( 'warning' )
+        ->once()
+        ->with(
+            'artisanpack-ui/performance: media optimization write-back failed',
+            Mockery::on( fn ( array $context ): bool => 'simulated DB failure' === $context['error'] ),
+        );
+} );
+
 it( 'skips the extract_dominant_color option when it is disabled', function (): void {
     if ( ! function_exists( 'imagewebp' ) ) {
         $this->markTestSkipped( 'GD WebP support is not available' );

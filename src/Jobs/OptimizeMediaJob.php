@@ -31,6 +31,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -180,6 +181,11 @@ class OptimizeMediaJob implements ShouldQueue
     /**
      * Persists the given lifecycle status back onto the media row.
      *
+     * `optimized_at` is only touched when the run just completed; a
+     * `processing` or `failed` write preserves the previous timestamp so
+     * a retry that fails after a successful earlier run doesn't erase
+     * the last-known-good freshness signal.
+     *
      * Silently no-ops when the target column is not present — applications
      * that pull the Performance package without running the additive media
      * migration should not throw at runtime.
@@ -188,10 +194,13 @@ class OptimizeMediaJob implements ShouldQueue
      */
     protected function writeStatus( string $status ): void
     {
-        $this->safelyUpdateAttributes( [
-            'optimization_status' => $status,
-            'optimized_at'        => MediaOptimizationStatus::COMPLETED === $status ? Carbon::now() : null,
-        ] );
+        $attributes = [ 'optimization_status' => $status ];
+
+        if ( MediaOptimizationStatus::COMPLETED === $status ) {
+            $attributes['optimized_at'] = Carbon::now();
+        }
+
+        $this->safelyUpdateAttributes( $attributes );
     }
 
     /**
@@ -358,11 +367,18 @@ class OptimizeMediaJob implements ShouldQueue
     /**
      * Writes attributes back to the media row, ignoring absent columns.
      *
-     * We can't `Schema::hasColumn()` here without knowing the table name, so
-     * catch the resulting `QueryException` when the migration hasn't been
-     * run and swallow it — the failure signal is "job succeeded but
-     * couldn't persist metadata", which the caller can also see via the
-     * absence of the timestamp.
+     * The most common cause of a `save()` failure here is the additive
+     * `media` migration not having been run — column doesn't exist,
+     * SQLSTATE fires, and the job should still report success on its
+     * primary work (deriving files). Any failure is logged at warning
+     * level so operators aren't blind to migration gaps, connection
+     * issues, or unrelated write errors.
+     *
+     * Also merges casts for the trait-managed columns on the fly so the
+     * write works even when the consuming model class doesn't `use
+     * HasOptimizedMedia` (e.g., the vanilla vendor `Media` model). Without
+     * casts, an array bound to a JSON column relies on undocumented MySQL
+     * grammar behavior and fails outright on SQLite/PostgreSQL.
      *
      * @since 1.0.0
      *
@@ -374,15 +390,26 @@ class OptimizeMediaJob implements ShouldQueue
             return;
         }
 
+        $this->media->mergeCasts( [
+            'optimized_formats' => 'array',
+            'optimized_sizes'   => 'array',
+            'optimized_at'      => 'datetime',
+        ] );
+
         foreach ( $attributes as $key => $value ) {
             $this->media->setAttribute( $key, $value );
         }
 
         try {
             $this->media->save();
-        } catch ( Throwable ) {
-            // Metadata columns absent (migration not run) — swallow to avoid
-            // failing the whole job when only the write-back is broken.
+        } catch ( Throwable $e ) {
+            Log::warning(
+                'artisanpack-ui/performance: media optimization write-back failed',
+                [
+                    'media_id' => $this->media->getKey(),
+                    'error'    => $e->getMessage(),
+                ],
+            );
         }
     }
 }

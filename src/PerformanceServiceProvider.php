@@ -305,31 +305,39 @@ class PerformanceServiceProvider extends ServiceProvider
     /**
      * Wires the `OptimizeUploadedMedia` listener into the media-library upload path.
      *
-     * media-library does not (yet) publish a Laravel event on upload, so we
-     * hook Eloquent's `created` model event on its `Media` model — that
-     * fires from every code path that persists a new row (uploads,
-     * seeders, importers). If a future media-library release ships a
-     * dedicated `MediaUploaded` event we listen for that too, so
-     * consumers get the same optimization behavior once they upgrade
-     * without needing to reconfigure anything on our side.
+     * Chooses a single dispatch source to prevent duplicate job runs when
+     * both hooks are available:
+     *
+     *   1. If media-library publishes a dedicated `MediaUploaded` event,
+     *      subscribe to it — the intent-carrying event is preferred over
+     *      the generic Eloquent model event.
+     *   2. Otherwise, fall back to the `Media::created` Eloquent event.
+     *
+     * The fallback closure captures `$app` (not `$this`) as a `static`
+     * closure so the ServiceProvider instance isn't kept alive by the
+     * model's global event registry under Octane / long-running workers.
      *
      * @since 1.0.0
      */
     protected function wireMediaLibraryListeners(): void
     {
-        $mediaModel = '\ArtisanPackUI\MediaLibrary\Models\Media';
-
-        if ( class_exists( $mediaModel ) && method_exists( $mediaModel, 'created' ) ) {
-            $mediaModel::created( function ( $media ): void {
-                $this->app->make( OptimizeUploadedMedia::class )->handle( $media );
-            } );
-        }
-
         $uploadedEvent = '\ArtisanPackUI\MediaLibrary\Events\MediaUploaded';
 
         if ( class_exists( $uploadedEvent ) ) {
             $events = $this->app->make( 'events' );
             $events->listen( $uploadedEvent, [ OptimizeUploadedMedia::class, 'handle' ] );
+
+            return;
+        }
+
+        $mediaModel = '\ArtisanPackUI\MediaLibrary\Models\Media';
+
+        if ( class_exists( $mediaModel ) && method_exists( $mediaModel, 'created' ) ) {
+            $app = $this->app;
+
+            $mediaModel::created( static function ( $media ) use ( $app ): void {
+                $app->make( OptimizeUploadedMedia::class )->handle( $media );
+            } );
         }
     }
 

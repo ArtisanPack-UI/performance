@@ -6,6 +6,19 @@ use ArtisanPackUI\Performance\Support\MediaOptimizationStatus;
 use ArtisanPackUI\Performance\Traits\HasOptimizedMedia;
 use Tests\Fixtures\MediaModelStub;
 
+it( 'auto-registers array/datetime casts on the consuming model via initializeHasOptimizedMedia', function (): void {
+    $media = new MediaModelStub;
+
+    // The stub declares its own casts too — merging via the trait hook
+    // must produce the expected cast types (idempotent when the model
+    // already casts the columns).
+    expect( $media->getCasts() )->toMatchArray( [
+        'optimized_formats' => 'array',
+        'optimized_sizes'   => 'array',
+        'optimized_at'      => 'datetime',
+    ] );
+} );
+
 it( 'returns pending status when the column is empty', function (): void {
     $media = new MediaModelStub;
 
@@ -39,7 +52,7 @@ it( 'returns the dominant color when it is set, null when not', function (): voi
     expect( $media->getDominantColor() )->toBeNull();
 } );
 
-it( 'resolves a format-only URL from the optimized_formats map', function (): void {
+it( 'resolves a format-only URL from a string entry (legacy schema)', function (): void {
     $media                    = new MediaModelStub;
     $media->optimized_formats = [
         'webp' => '/storage/media/1/optimized/image.webp',
@@ -47,6 +60,36 @@ it( 'resolves a format-only URL from the optimized_formats map', function (): vo
 
     expect( $media->getOptimizedUrl( 'webp' ) )->toBe( '/storage/media/1/optimized/image.webp' )
         ->and( $media->getOptimizedUrl( 'avif' ) )->toBeNull();
+} );
+
+it( 'returns the largest-width URL when a format-only lookup finds a nested size-map', function (): void {
+    $media                    = new MediaModelStub;
+    $media->optimized_formats = [
+        'webp' => [
+            '320' => '/storage/media/1/optimized/image-320.webp',
+            '640' => '/storage/media/1/optimized/image-640.webp',
+            '800' => '/storage/media/1/optimized/image-800.webp',
+        ],
+    ];
+
+    // Format-only lookup should return the LARGEST width — the natural
+    // "give me the best available WebP" default that matches the README's
+    // documented API contract.
+    expect( $media->getOptimizedUrl( 'webp' ) )
+        ->toBe( '/storage/media/1/optimized/image-800.webp' );
+} );
+
+it( 'ignores non-numeric keys when picking the largest width for a format-only lookup', function (): void {
+    $media                    = new MediaModelStub;
+    $media->optimized_formats = [
+        'webp' => [
+            '320'  => '/storage/media/1/image-320.webp',
+            'name' => '/storage/media/1/should-be-skipped.webp',
+        ],
+    ];
+
+    expect( $media->getOptimizedUrl( 'webp' ) )
+        ->toBe( '/storage/media/1/image-320.webp' );
 } );
 
 it( 'resolves a format+size URL from the nested map', function (): void {

@@ -35,13 +35,38 @@ use ArtisanPackUI\Performance\Support\MediaOptimizationStatus;
 trait HasOptimizedMedia
 {
     /**
+     * Boot hook that runs once per model instance to merge in the trait's
+     * casts for `optimized_formats`, `optimized_sizes`, and `optimized_at`.
+     *
+     * Registering the casts here means consuming models don't have to
+     * remember to add them by hand — the trait is self-contained and
+     * database writes go through the correct JSON/datetime encoding
+     * regardless of which model class the row is hydrated into.
+     *
+     * @since 1.0.0
+     */
+    public function initializeHasOptimizedMedia(): void
+    {
+        $this->mergeCasts( [
+            'optimized_formats' => 'array',
+            'optimized_sizes'   => 'array',
+            'optimized_at'      => 'datetime',
+        ] );
+    }
+
+    /**
      * Returns the URL of the optimized derivative for the given format/size.
      *
-     * Looks up the URL in the `optimized_formats` map first (format-specific
-     * variants like WebP or AVIF), then falls back to `optimized_sizes` when
-     * `$format` is null and only a size was requested. Returns `null` when
-     * no matching entry has been recorded — callers should typically fall
-     * back to the original media URL in that case.
+     * Lookup precedence:
+     *  1. When `$size` is provided, return the exact `optimized_formats[$format][$size]`
+     *     entry (or the size-only `optimized_sizes[$size]` entry when `$format` is null).
+     *  2. When only `$format` is provided and the entry is a `{width => url}` map, return
+     *     the URL for the LARGEST width — the natural "give me the best WebP" default.
+     *  3. When only `$format` is provided and the entry is a bare string, return it as-is
+     *     (older schema shape).
+     *
+     * Returns `null` when no matching entry has been recorded — callers should
+     * typically fall back to the original media URL in that case.
      *
      * @since 1.0.0
      *
@@ -54,14 +79,15 @@ trait HasOptimizedMedia
     {
         if ( null !== $format ) {
             $formats = $this->readOptimizedFormatsMap();
+            $entry   = $formats[ $format ] ?? null;
 
             if ( null === $size ) {
-                $entry = $formats[ $format ] ?? null;
+                if ( is_string( $entry ) ) {
+                    return $entry;
+                }
 
-                return is_string( $entry ) ? $entry : null;
+                return is_array( $entry ) ? $this->largestWidthUrl( $entry ) : null;
             }
-
-            $entry = $formats[ $format ] ?? null;
 
             if ( is_array( $entry ) ) {
                 $value = $entry[ (string) $size ] ?? null;
@@ -150,6 +176,37 @@ trait HasOptimizedMedia
         $value = $this->getAttribute( 'optimization_status' );
 
         return is_string( $value ) && '' !== $value ? $value : MediaOptimizationStatus::PENDING;
+    }
+
+    /**
+     * Picks the URL for the largest numeric width in a `{width => url}` map.
+     *
+     * Non-numeric keys and non-string values are skipped so the srcset
+     * contract stays well-formed even when the JSON blob was hand-edited.
+     *
+     * @since 1.0.0
+     *
+     * @param  array<string, mixed>  $entries  Width-keyed URL map.
+     */
+    protected function largestWidthUrl( array $entries ): ?string
+    {
+        $best      = null;
+        $bestWidth = -1;
+
+        foreach ( $entries as $width => $url ) {
+            if ( ! is_string( $url ) || '' === $url || ! is_numeric( $width ) ) {
+                continue;
+            }
+
+            $intWidth = (int) $width;
+
+            if ( $intWidth > $bestWidth ) {
+                $bestWidth = $intWidth;
+                $best      = $url;
+            }
+        }
+
+        return $best;
     }
 
     /**

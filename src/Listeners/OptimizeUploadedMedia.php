@@ -29,6 +29,8 @@ namespace ArtisanPackUI\Performance\Listeners;
 use ArtisanPackUI\Performance\Jobs\OptimizeMediaJob;
 use ArtisanPackUI\Performance\Services\MediaLibraryDetector;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 /**
  * Listener class for post-upload media optimization.
@@ -83,7 +85,20 @@ class OptimizeUploadedMedia
             return;
         }
 
-        OptimizeMediaJob::dispatch( $media, $this->buildJobOptions() );
+        // Skip factory/seeder rows whose file_path doesn't resolve on disk —
+        // the encoder would immediately fail on those and the queue would fill
+        // with pointless jobs during test runs.
+        if ( ! $this->hasReadableSource( $media ) ) {
+            return;
+        }
+
+        // afterCommit() defers the actual push until the enclosing DB
+        // transaction commits (a no-op outside a transaction). Without it,
+        // a queue worker on a separate connection can pick the job up
+        // before the media row is visible and blow up in SerializesModels'
+        // findOrFail() call.
+        OptimizeMediaJob::dispatch( $media, $this->buildJobOptions() )
+            ->afterCommit();
     }
 
     /**
@@ -143,6 +158,14 @@ class OptimizeUploadedMedia
     /**
      * Builds the option array forwarded to `OptimizeMediaJob`.
      *
+     * Accepts both shapes of the `images.formats` config:
+     *   - Documented shape: `['webp' => ['enabled' => true, ...], ...]`.
+     *   - Flat-list shape:  `['webp', 'avif']`.
+     *
+     * The flat-list branch prevents the silent-empty-formats failure mode
+     * an operator would otherwise hit by simplifying the config without
+     * realizing the enabled/quality subkeys are load-bearing.
+     *
      * @since 1.0.0
      *
      * @return array<string, mixed>
@@ -154,7 +177,13 @@ class OptimizeUploadedMedia
         $formats = [];
 
         foreach ( (array) config( 'artisanpack.performance.images.formats', [] ) as $key => $settings ) {
-            if ( ! empty( $settings['enabled'] ) ) {
+            if ( is_string( $settings ) && '' !== $settings ) {
+                $formats[] = strtolower( $settings );
+
+                continue;
+            }
+
+            if ( is_array( $settings ) && ! empty( $settings['enabled'] ) ) {
                 $formats[] = (string) $key;
             }
         }
@@ -163,8 +192,36 @@ class OptimizeUploadedMedia
 
         return [
             'sizes'                  => array_values( array_map( 'intval', $sizes ) ),
-            'formats'                => $formats,
+            'formats'                => array_values( array_unique( $formats ) ),
             'extract_dominant_color' => $extract,
         ];
+    }
+
+    /**
+     * Reports whether the media row points at a file that actually exists on disk.
+     *
+     * Returns `true` when `file_path` is set and the configured `disk`
+     * confirms the file exists; returns `false` for factory/seeder-created
+     * rows whose file_path is a placeholder. Errors from the storage
+     * layer are treated as "unreadable" so a transient disk hiccup skips
+     * the dispatch rather than corrupting the queue.
+     *
+     * @since 1.0.0
+     */
+    protected function hasReadableSource( Model $media ): bool
+    {
+        $filePath = $media->getAttribute( 'file_path' );
+
+        if ( ! is_string( $filePath ) || '' === $filePath ) {
+            return false;
+        }
+
+        $disk = (string) ( $media->getAttribute( 'disk' ) ?? 'public' );
+
+        try {
+            return Storage::disk( $disk )->exists( $filePath );
+        } catch ( Throwable ) {
+            return false;
+        }
     }
 }
