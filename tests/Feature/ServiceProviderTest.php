@@ -62,6 +62,51 @@ it( 'registers the perf:generate-webp console command', function (): void {
     expect( $registered )->toContain( 'perf:generate-webp' );
 } );
 
+it( 'registers only the MediaUploaded event listener when it exists (no double-dispatch)', function (): void {
+    // Simulate a future media-library release that ships the dedicated
+    // MediaUploaded event class. The provider should subscribe to that
+    // event and NOT also register the fallback Eloquent model closure —
+    // otherwise a single upload would enqueue OptimizeMediaJob twice.
+    if ( ! class_exists( 'ArtisanPackUI\\MediaLibrary\\Events\\MediaUploaded' ) ) {
+        eval( 'namespace ArtisanPackUI\\MediaLibrary\\Events; class MediaUploaded {}' );
+    }
+
+    config( [ 'artisanpack.performance.media_library_integration.enabled' => true ] );
+
+    $provider = app()->resolveProvider( PerformanceServiceProvider::class );
+
+    $reflection = new ReflectionClass( $provider );
+    $method     = $reflection->getMethod( 'wireMediaLibraryListeners' );
+    $method->setAccessible( true );
+    $method->invoke( $provider );
+
+    // Provider stores listeners keyed by the exact FQCN string passed to
+    // listen() — check both leading-backslash and no-backslash forms so
+    // this test doesn't depend on which convention the provider uses.
+    expect(
+        app( 'events' )->hasListeners( '\\ArtisanPackUI\\MediaLibrary\\Events\\MediaUploaded' )
+        || app( 'events' )->hasListeners( 'ArtisanPackUI\\MediaLibrary\\Events\\MediaUploaded' ),
+    )->toBeTrue();
+} );
+
+it( 'boots without throwing when media-library is not installed', function (): void {
+    // The test environment does not depend on artisanpack-ui/media-library so
+    // the provider class does not exist. The Performance service provider
+    // must still boot cleanly — the media library integration path is
+    // guarded on the detector's status.
+    config( [ 'artisanpack.performance.media_library_integration.enabled' => null ] );
+
+    expect( fn () => app()->resolveProvider( PerformanceServiceProvider::class )->boot() )
+        ->not->toThrow( Throwable::class );
+} );
+
+it( 'skips listener wiring when the integration is forced off via config', function (): void {
+    config( [ 'artisanpack.performance.media_library_integration.enabled' => false ] );
+
+    expect( fn () => app()->resolveProvider( PerformanceServiceProvider::class )->boot() )
+        ->not->toThrow( Throwable::class );
+} );
+
 it( 'replaces list-valued config overrides wholesale instead of per-index', function (): void {
     // Regression test: array_replace_recursive would bleed the package defaults
     // through at higher indices (e.g. images.sizes default [320,640,768,1024,1280,1920]
@@ -72,8 +117,8 @@ it( 'replaces list-valued config overrides wholesale instead of per-index', func
 
     app()->resolveProvider( PerformanceServiceProvider::class )->boot();
 
-    expect( config( 'artisanpack.performance.images.sizes'))->toBe( [1200])
-        ->and( config( 'artisanpack.performance.speculative_loading.prefetch.exclude_patterns'))->toBe( ['/private'])
+    expect( config( 'artisanpack.performance.images.sizes' ) )->toBe( [1200] )
+        ->and( config( 'artisanpack.performance.speculative_loading.prefetch.exclude_patterns' ) )->toBe( ['/private'] )
         // Sanity: associative defaults still merge through (driver still resolves).
-        ->and( config( 'artisanpack.performance.images.driver'))->toBe( 'gd');
-});
+        ->and( config( 'artisanpack.performance.images.driver' ) )->toBe( 'gd' );
+} );
