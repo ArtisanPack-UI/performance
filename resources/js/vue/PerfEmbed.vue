@@ -5,7 +5,7 @@
  * @since 1.0.0
  */
 
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue';
 
 export type PerfEmbedProvider = 'youtube' | 'vimeo' | 'twitter' | 'x';
 export type PerfEmbedMode = 'iframe' | 'blockquote';
@@ -65,19 +65,59 @@ function onFacadeKey( event: KeyboardEvent ): void {
 		activate();
 	}
 }
+
+// Widget scripts (Twitter/X blockquote embeds) can't sit inline in the
+// template — Vue's SFC compiler strips literal <script> tags from
+// templates as side-effect elements. Inject it programmatically into
+// the blockquote wrapper once the eager mode swaps in, and remove it on
+// unmount so route changes don't stack duplicate scripts.
+const blockquoteRoot = useTemplateRef<HTMLDivElement>( 'blockquoteRoot' );
+let widgetsScript: HTMLScriptElement | null = null;
+
+function removeWidgetsScript(): void {
+	if ( null !== widgetsScript ) {
+		widgetsScript.remove();
+		widgetsScript = null;
+	}
+}
+
+function installWidgetsScript(): void {
+	removeWidgetsScript();
+	if ( ! props.facade || 'blockquote' !== props.facade.mode || ! showEager.value ) {
+		return;
+	}
+	const src = props.facade.widgets_script;
+	if ( '' === src ) {
+		return;
+	}
+	const root = blockquoteRoot.value;
+	if ( null === root ) {
+		return;
+	}
+	const script = document.createElement( 'script' );
+	script.async = true;
+	script.src = src;
+	script.charset = 'utf-8';
+	root.appendChild( script );
+	widgetsScript = script;
+}
+
+watch(
+	[ () => props.facade, showEager ],
+	() => {
+		void Promise.resolve().then( installWidgetsScript );
+	},
+	{ immediate: true },
+);
+
+onBeforeUnmount( removeWidgetsScript );
 </script>
 
 <template>
 	<template v-if="props.facade">
 		<template v-if="showEager">
-			<div v-if="'blockquote' === props.facade.mode" :class="containerClass" :style="style">
+			<div v-if="'blockquote' === props.facade.mode" ref="blockquoteRoot" :class="containerClass" :style="style">
 				<div v-html="props.facade.embed_html" />
-				<script
-					v-if="'' !== props.facade.widgets_script"
-					async
-					:src="props.facade.widgets_script"
-					charset="utf-8"
-				/>
 			</div>
 			<iframe
 				v-else
