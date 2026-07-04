@@ -63,22 +63,30 @@ class CacheAdminApiController extends AdminApiController
 
         switch ( $validated['action'] ) {
             case 'flush':
-                $result  = $invalidator->purgeAll();
-                $message = sprintf(
-                    'Purged %d page cache entr(y|ies) and %d fragment tag(s).',
-                    (int) ( $result['page'] ?? 0 ),
-                    (int) ( $result['fragments'] ?? 0 ),
+                $result   = $invalidator->purgeAll();
+                $pageOut  = (int) ( $result['page'] ?? 0 );
+                $fragOut  = (int) ( $result['fragments'] ?? 0 );
+                $pageText = (string) trans_choice(
+                    ':count page cache entry|:count page cache entries',
+                    $pageOut,
+                    [ 'count' => $pageOut ],
                 );
+                $fragText = (string) trans_choice(
+                    ':count fragment tag|:count fragment tags',
+                    $fragOut,
+                    [ 'count' => $fragOut ],
+                );
+                $message  = (string) __( 'Purged :page and :fragments.', [ 'page' => $pageText, 'fragments' => $fragText ] );
                 break;
 
             case 'warm':
                 $manager = app( PageCacheManager::class );
-                $urls    = (array) config( 'artisanpack.performance.cache.cache_warming.urls', [] );
+                $urls    = (array) config( 'artisanpack.performance.cache_warming.urls', [] );
                 $urls    = array_values( array_filter( $urls, 'is_string' ) );
 
                 if ( [] === $urls ) {
                     $isError = true;
-                    $message = 'No warm-cache URLs are configured.';
+                    $message = (string) __( 'No warm-cache URLs are configured.' );
                     break;
                 }
 
@@ -86,12 +94,16 @@ class CacheAdminApiController extends AdminApiController
                 $ok      = 0;
 
                 foreach ( $results as $entry ) {
-                    if ( true === ( $entry['ok'] ?? false ) ) {
+                    if ( is_array( $entry ) && true === ( $entry['ok'] ?? false ) ) {
                         $ok++;
                     }
                 }
 
-                $message = sprintf( 'Warmed %d of %d URL(s).', $ok, count( $urls ) );
+                $message = (string) trans_choice(
+                    'Warmed :count of :total URL.|Warmed :count of :total URLs.',
+                    count( $results ),
+                    [ 'count' => $ok, 'total' => count( $results ) ],
+                );
                 break;
 
             case 'invalidate-key':
@@ -99,12 +111,16 @@ class CacheAdminApiController extends AdminApiController
 
                 if ( '' === $key ) {
                     $isError = true;
-                    $message = 'A cache key or pattern is required.';
+                    $message = (string) __( 'A cache key or pattern is required.' );
                     break;
                 }
 
                 $count   = $invalidator->invalidatePagePattern( $key );
-                $message = sprintf( 'Invalidated %d matching entr(y|ies).', $count );
+                $message = (string) trans_choice(
+                    'Invalidated :count matching entry.|Invalidated :count matching entries.',
+                    $count,
+                    [ 'count' => $count ],
+                );
                 break;
 
             case 'invalidate-tag':
@@ -112,17 +128,21 @@ class CacheAdminApiController extends AdminApiController
 
                 if ( '' === $tag ) {
                     $isError = true;
-                    $message = 'A fragment tag is required.';
+                    $message = (string) __( 'A fragment tag is required.' );
                     break;
                 }
 
                 $count   = $invalidator->invalidateFragmentTag( $tag );
-                $message = sprintf( 'Invalidated %d fragment(s) tagged "%s".', $count, $tag );
+                $message = (string) trans_choice(
+                    'Invalidated :count fragment tagged ":tag".|Invalidated :count fragments tagged ":tag".',
+                    $count,
+                    [ 'count' => $count, 'tag' => $tag ],
+                );
                 break;
 
             default:
                 $isError = true;
-                $message = 'Unknown cache action.';
+                $message = (string) __( 'Unknown cache action.' );
         }
 
         return response()->json( array_merge(

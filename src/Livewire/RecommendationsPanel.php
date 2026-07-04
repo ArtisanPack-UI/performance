@@ -23,6 +23,7 @@ declare( strict_types=1 );
 
 namespace ArtisanPackUI\Performance\Livewire;
 
+use ArtisanPackUI\Performance\Events\IndexMigrationRequested;
 use ArtisanPackUI\Performance\Monitoring\RecommendationEngine;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Session;
@@ -325,15 +326,31 @@ class RecommendationsPanel extends Component
     protected function runGenerateIndexMigration( array $recommendation ): void
     {
         $payload = (array) ( $recommendation['action_payload'] ?? [] );
+        $table   = (string) ( $payload['table'] ?? '' );
+        $columns = array_values( array_filter(
+            (array) ( $payload['columns'] ?? [] ),
+            'is_string',
+        ) );
 
+        // Server-side dispatch through Laravel's event bus so both the
+        // Livewire panel and the JSON admin API reach the same
+        // application-side listener.
+        IndexMigrationRequested::dispatch(
+            $table,
+            $columns,
+            (string) ( $recommendation['id'] ?? '' ),
+        );
+
+        // Additional browser-side dispatch so pre-existing hosts that
+        // wired a JS handler for the legacy string event keep working.
         $this->dispatch(
             'performance:generate-index-migration',
-            table: (string) ( $payload['table'] ?? '' ),
-            columns: array_values( (array) ( $payload['columns'] ?? [] ) ),
+            table: $table,
+            columns: $columns,
         );
 
         $this->setStatus( __( 'Requested index migration generation for :table.', [
-            'table' => (string) ( $payload['table'] ?? '' ),
+            'table' => $table,
         ] ) );
     }
 

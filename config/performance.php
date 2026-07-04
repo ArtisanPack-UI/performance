@@ -375,7 +375,17 @@ return [
     'routes' => [
         'enabled' => true,
         'api_prefix' => 'api/performance',
+        // Middleware for the stateless public endpoints (metrics ingest).
         'api_middleware' => ['api'],
+        // Middleware for the admin JSON API endpoints. Needs session
+        // support because the recommendations panel persists dismissals
+        // to the session. Applies to /admin/* under the api_prefix.
+        'admin_middleware' => [
+            \Illuminate\Cookie\Middleware\EncryptCookies::class,
+            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+        ],
         'api_throttle' => env('PERF_API_THROTTLE', '60,1'),
     ],
 

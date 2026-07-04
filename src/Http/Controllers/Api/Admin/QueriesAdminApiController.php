@@ -43,6 +43,8 @@ class QueriesAdminApiController extends AdminApiController
 
     public const RESULT_LIMIT = 50;
 
+    public const EXPORT_LIMIT = 10000;
+
     /**
      * GET /api/performance/admin/queries — JSON payload.
      *
@@ -55,7 +57,7 @@ class QueriesAdminApiController extends AdminApiController
         $filters = $this->resolveFilters( $request );
 
         return response()->json( [
-            'rows'             => $this->buildRows( $filters ),
+            'rows'             => $this->buildRows( $filters, self::RESULT_LIMIT ),
             'available_routes' => $this->availableRoutes( $filters['start'] ),
             'sort'             => $filters['sort'],
         ] );
@@ -71,7 +73,10 @@ class QueriesAdminApiController extends AdminApiController
         $this->authorizeAdmin();
 
         $filters  = $this->resolveFilters( $request );
-        $rows     = $this->buildRows( $filters );
+        // Export uses a much larger cap than the interactive listing so
+        // callers requesting the full filtered dataset don't silently
+        // receive a 50-row preview.
+        $rows     = $this->buildRows( $filters, self::EXPORT_LIMIT );
         $filename = 'slow-queries-' . Carbon::now()->format( 'Y-m-d-His' ) . '.csv';
 
         return response()->streamDownload( static function () use ( $rows ): void {
@@ -147,10 +152,11 @@ class QueriesAdminApiController extends AdminApiController
 
     /**
      * @param  array{start: Carbon, route: string, minTimeMs: int, sort: string}  $filters
+     * @param  int  $limit  Maximum rows to return.
      *
      * @return array<int, array<string, mixed>>
      */
-    protected function buildRows( array $filters ): array
+    protected function buildRows( array $filters, int $limit ): array
     {
         if ( ! class_exists( SlowQuery::class ) ) {
             return [];
@@ -170,7 +176,7 @@ class QueriesAdminApiController extends AdminApiController
             ] ) )
             ->groupBy( 'query_normalized' )
             ->orderByDesc( 'time' === $filters['sort'] ? 'peak_time_ms' : 'occurrences' )
-            ->limit( self::RESULT_LIMIT )
+            ->limit( $limit )
             ->get();
 
         $samples       = $rows->pluck( 'sample_query' )->all();
@@ -288,15 +294,15 @@ class QueriesAdminApiController extends AdminApiController
      */
     protected function lookupSuggestion( array $suggestionMap, string $sample ): ?string
     {
-        if ( [] === $suggestionMap || '' === $sample) {
+        if ( [] === $suggestionMap || '' === $sample ) {
             return null;
         }
 
-        if ( 1 !== preg_match( '/\bfrom\s+`?([a-z_][a-z0-9_]*)`?/i', $sample, $matches)) {
+        if ( 1 !== preg_match( '/\bfrom\s+`?([a-z_][a-z0-9_]*)`?/i', $sample, $matches ) ) {
             return null;
         }
 
-        $table = strtolower( $matches[1]);
+        $table = strtolower( $matches[1] );
 
         return $suggestionMap[ $table ]['suggestion'] ?? null;
     }

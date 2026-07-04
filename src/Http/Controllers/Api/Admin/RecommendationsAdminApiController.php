@@ -20,10 +20,10 @@ declare( strict_types=1 );
 namespace ArtisanPackUI\Performance\Http\Controllers\Api\Admin;
 
 use ArtisanPackUI\Performance\Cache\PageCacheManager;
+use ArtisanPackUI\Performance\Events\IndexMigrationRequested;
 use ArtisanPackUI\Performance\Monitoring\RecommendationEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Session;
 use Throwable;
 
@@ -211,14 +211,15 @@ class RecommendationsAdminApiController extends AdminApiController
     {
         $payload = (array) ( $recommendation['action_payload'] ?? [] );
         $table   = (string) ( $payload['table'] ?? '' );
-        $columns = array_values( (array) ( $payload['columns'] ?? [] ) );
+        $columns = array_values( array_filter(
+            (array) ( $payload['columns'] ?? [] ),
+            'is_string',
+        ) );
 
-        Event::dispatch(
-            'performance:generate-index-migration',
-            [
-                'table'   => $table,
-                'columns' => $columns,
-            ],
+        IndexMigrationRequested::dispatch(
+            $table,
+            $columns,
+            (string) ( $recommendation['id'] ?? '' ),
         );
 
         return [
@@ -246,11 +247,11 @@ class RecommendationsAdminApiController extends AdminApiController
             $current[] = $id;
         }
 
-        Session::put( self::DISMISSAL_KEY, $current);
+        Session::put( self::DISMISSAL_KEY, $current );
     }
 
-    protected function resolveRange( string $range): string
+    protected function resolveRange( string $range ): string
     {
-        return in_array( $range, self::RANGE_KEYS, true) ? $range : '7d';
+        return in_array( $range, self::RANGE_KEYS, true ) ? $range : '7d';
     }
 }

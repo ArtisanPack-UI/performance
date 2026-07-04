@@ -62,11 +62,23 @@ class DashboardAdminApiController extends AdminApiController
         $start = Carbon::today()->subDays( $days - 1 );
         $end   = Carbon::today();
 
+        // Respect `ui.tabs.<name>` toggles so the API doesn't leak
+        // surfaces the host explicitly disabled through the Livewire
+        // dashboard's `visibleTabs()` gate.
+        $tabs = (array) config( 'artisanpack.performance.ui.tabs', [] );
+
+        $overviewVisible = false !== ( $tabs['overview'] ?? true );
+        $pagesVisible    = false !== ( $tabs['pages'] ?? true );
+        $cacheVisible    = false !== ( $tabs['cache'] ?? true );
+
         return response()->json( [
             'range'    => $range,
-            'overview' => $this->buildOverview( $start, $end ),
-            'pages'    => $this->buildPagesBreakdown( $start, $end ),
-            'cache'    => $this->buildCacheSummary(),
+            'overview' => $overviewVisible ? $this->buildOverview( $start, $end ) : [],
+            'pages'    => $pagesVisible ? $this->buildPagesBreakdown( $start, $end ) : [],
+            'cache'    => $cacheVisible ? $this->buildCacheSummary() : [
+                'page'     => [ 'entries' => 0 ],
+                'fragment' => [ 'entries' => 0, 'tags' => 0 ],
+            ],
         ] );
     }
 
@@ -80,7 +92,8 @@ class DashboardAdminApiController extends AdminApiController
     protected function buildOverview( Carbon $start, Carbon $end ): array
     {
         $rows = PerformanceMetric::query()
-            ->whereBetween( 'date', [$start, $end] )
+            ->whereDate( 'date', '>=', $start->toDateString() )
+            ->whereDate( 'date', '<=', $end->toDateString() )
             ->selectRaw( 'metric, SUM(p75 * sample_count) as weighted_p75_sum, SUM(sample_count) as sample_count' )
             ->groupBy( 'metric' )
             ->get();
@@ -113,7 +126,8 @@ class DashboardAdminApiController extends AdminApiController
     protected function buildPagesBreakdown( Carbon $start, Carbon $end ): array
     {
         return PerformanceMetric::query()
-            ->whereBetween( 'date', [$start, $end] )
+            ->whereDate( 'date', '>=', $start->toDateString() )
+            ->whereDate( 'date', '<=', $end->toDateString() )
             ->whereNotNull( 'route' )
             ->selectRaw( 'route, metric, SUM(p75 * sample_count) / NULLIF(SUM(sample_count), 0) as p75, SUM(sample_count) as sample_count' )
             ->groupBy( 'route', 'metric' )
@@ -153,6 +167,6 @@ class DashboardAdminApiController extends AdminApiController
      */
     protected function resolveRange( string $range ): string
     {
-        return isset( self::RANGE_DAYS[ $range ]) ? $range : '7d';
+        return isset( self::RANGE_DAYS[ $range ] ) ? $range : '7d';
     }
 }

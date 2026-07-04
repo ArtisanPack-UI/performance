@@ -82,7 +82,8 @@ class ChartAdminApiController extends AdminApiController
         $labels = $this->dateRangeLabels( $start, $end );
 
         $rows = PerformanceMetric::query()
-            ->whereBetween( 'date', [$start, $end] )
+            ->whereDate( 'date', '>=', $start->toDateString() )
+            ->whereDate( 'date', '<=', $end->toDateString() )
             ->whereIn( 'metric', $metrics )
             ->selectRaw( 'metric, date, SUM(p75 * sample_count) / NULLIF(SUM(sample_count), 0) as p75' )
             ->groupBy( 'metric', 'date' )
@@ -181,7 +182,7 @@ class ChartAdminApiController extends AdminApiController
         $labels = [];
         $cursor = $start->copy();
 
-        while ( $cursor->lessThanOrEqualTo( $end)) {
+        while ( $cursor->lessThanOrEqualTo( $end ) ) {
             $labels[] = $cursor->toDateString();
             $cursor->addDay();
         }

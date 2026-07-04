@@ -23,11 +23,16 @@ uses( RefreshDatabase::class );
 
 beforeEach( function (): void {
     config( [
-        'artisanpack.performance.routes.enabled'         => true,
-        'artisanpack.performance.routes.api_prefix'      => 'api/performance',
-        'artisanpack.performance.routes.api_middleware'  => [],
-        'artisanpack.performance.routes.api_throttle'    => '1000,1',
-        'artisanpack.performance.dashboard.gate'         => 'view-performance-dashboard',
+        'artisanpack.performance.routes.enabled'           => true,
+        'artisanpack.performance.routes.api_prefix'        => 'api/performance',
+        'artisanpack.performance.routes.api_middleware'    => [],
+        // Admin routes need session middleware to persist dismissals.
+        // Testbench's default `web` group includes StartSession.
+        'artisanpack.performance.routes.admin_middleware'  => [
+            Illuminate\Session\Middleware\StartSession::class,
+        ],
+        'artisanpack.performance.routes.api_throttle'      => '1000,1',
+        'artisanpack.performance.dashboard.gate'           => 'view-performance-dashboard',
     ] );
 
     Gate::define( 'view-performance-dashboard', static fn (): bool => true );
@@ -120,7 +125,7 @@ it( 'rejects an unknown cache action', function (): void {
 } );
 
 it( 'reports the empty-URLs case as an error from the warm action', function (): void {
-    config( [ 'artisanpack.performance.cache.cache_warming.urls' => [] ] );
+    config( [ 'artisanpack.performance.cache_warming.urls' => [] ] );
 
     $response = $this->postJson( '/api/performance/admin/cache/actions', [ 'action' => 'warm' ] );
 
