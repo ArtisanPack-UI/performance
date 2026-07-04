@@ -364,9 +364,11 @@ Performance::recordMetric( 'checkout.duration', 4200.0, ['step' => 'shipping'] )
 ## Media Library Integration
 
 When [`artisanpack-ui/media-library`](https://github.com/ArtisanPack-UI/media-library)
-is installed, the Performance package automatically optimizes every uploaded
-image. The integration is detected at boot (via `MediaLibraryDetector`) and
-can be forced on or off explicitly:
+is installed, the Performance package automatically optimizes uploaded images
+whose file resolves to a local filesystem path. Non-image uploads are skipped,
+and rows on remote disks (S3, GCS) that don't expose a local `path()` are a
+current caveat — see the FAQ. The integration is detected at boot (via
+`MediaLibraryDetector`) and can be forced on or off explicitly:
 
 ```php
 'media_library_integration' => [
@@ -377,26 +379,33 @@ can be forced on or off explicitly:
 ```
 
 Uploaded rows are enriched with optimization metadata via the
-`HasOptimizedMedia` trait:
+`HasOptimizedMedia` trait. Extend media-library's `Media` model in your app
+and mix in the trait:
 
 ```php
-use ArtisanPackUI\MediaLibrary\Models\Media;
+namespace App\Models;
+
+use ArtisanPackUI\MediaLibrary\Models\Media as BaseMedia;
 use ArtisanPackUI\Performance\Traits\HasOptimizedMedia;
 
-class Media extends Model
+class OptimizedMedia extends BaseMedia
 {
     use HasOptimizedMedia;
 }
 
-$media = Media::find( 1 );
+$media = OptimizedMedia::find( 1 );
 
 $media->isOptimized();                         // bool
 $media->getOptimizationStatus();               // 'pending' | 'processing' | 'completed' | 'failed'
 $media->getDominantColor();                    // '#3b82f6' or null
-$media->getOptimizedUrl( 'webp' );             // format-only lookup
+$media->getOptimizedUrl( 'webp' );             // format-only lookup — returns the largest-width URL
 $media->getOptimizedUrl( 'webp', 640 );        // format + width lookup
 $media->getSrcset( 'webp' );                   // '<url> 320w, <url> 640w, ...'
 ```
+
+The trait auto-registers the `optimized_formats`/`optimized_sizes`/`optimized_at`
+casts via `initializeHasOptimizedMedia()`, so you don't have to declare them
+on the model yourself.
 
 Optimization runs asynchronously in `OptimizeMediaJob`, which writes back
 `dominant_color`, `optimization_status`, `optimized_at`, `optimized_formats`,

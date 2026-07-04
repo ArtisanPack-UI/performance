@@ -184,6 +184,35 @@ it( 'logs a warning when the write-back save() throws instead of silently swallo
         );
 } );
 
+it( 'derives storage root by trimming only the trailing file_path suffix', function (): void {
+    if ( ! function_exists( 'imagewebp' ) ) {
+        $this->markTestSkipped( 'GD WebP support is not available' );
+    }
+
+    // Regression: a file_path whose text appears more than once in the
+    // absolute path would previously have been stripped every time by
+    // str_replace, mangling the storage root. Use a path that contains
+    // a repeated segment (`media/1/media`) so any wrong-strip would
+    // yield a broken URL and drop the variant from optimized_formats.
+    $sourceFixture = makeTestImage( 'repeated-seg.jpg', 300, 200 );
+    Storage::disk( 'public' )->put( 'media/1/media', file_get_contents( $sourceFixture ) );
+
+    $media = MediaModelStub::create( [
+        'file_path' => 'media/1/media',
+        'disk'      => 'public',
+        'mime_type' => 'image/jpeg',
+    ] );
+
+    $job = new OptimizeMediaJob( $media, [
+        'sizes'   => [200],
+        'formats' => ['webp'],
+    ] );
+
+    $job->handle( app( ImageService::class ) );
+
+    expect( $media->refresh()->optimized_formats )->toHaveKey( 'webp' );
+} );
+
 it( 'skips the extract_dominant_color option when it is disabled', function (): void {
     if ( ! function_exists( 'imagewebp' ) ) {
         $this->markTestSkipped( 'GD WebP support is not available' );

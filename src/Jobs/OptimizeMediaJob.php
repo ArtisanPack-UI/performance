@@ -308,8 +308,16 @@ class OptimizeMediaJob implements ShouldQueue
 
         if ( method_exists( $storage, 'path' ) && '' !== $filePath ) {
             $sourceAbsolute = $storage->path( $filePath );
-            $storageRoot    = str_replace( $filePath, '', $sourceAbsolute );
-            $storageRoot    = rtrim( $storageRoot, DIRECTORY_SEPARATOR );
+
+            // Trim only the KNOWN trailing suffix — a naive
+            // `str_replace( $filePath, '', $sourceAbsolute )` would strip
+            // every occurrence of `$filePath` text (breaking on disks whose
+            // root contains a repeated segment) and would silently miss
+            // Windows-style separators.
+            $storageRoot = str_ends_with( $sourceAbsolute, $filePath )
+                ? substr( $sourceAbsolute, 0, -strlen( $filePath ) )
+                : $sourceAbsolute;
+            $storageRoot = rtrim( $storageRoot, DIRECTORY_SEPARATOR );
 
             if ( '' !== $storageRoot && str_starts_with( $absolutePath, $storageRoot . DIRECTORY_SEPARATOR ) ) {
                 $relative = substr( $absolutePath, strlen( $storageRoot ) + 1 );
