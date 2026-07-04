@@ -26,6 +26,7 @@ use ArtisanPackUI\Performance\Cache\PageCacheManager;
 use ArtisanPackUI\Performance\Console\Commands\AggregateMetricsCommand;
 use ArtisanPackUI\Performance\Console\Commands\GenerateCriticalCssCommand;
 use ArtisanPackUI\Performance\Console\Commands\GenerateWebPCommand;
+use ArtisanPackUI\Performance\Console\Commands\InstallCommand;
 use ArtisanPackUI\Performance\Console\Commands\PurgeCacheCommand;
 use ArtisanPackUI\Performance\Console\Commands\SuggestIndexesCommand;
 use ArtisanPackUI\Performance\Console\Commands\WarmCacheCommand;
@@ -430,6 +431,7 @@ class PerformanceServiceProvider extends ServiceProvider
     {
         if ( $this->app->runningInConsole() ) {
             $this->commands( [
+                InstallCommand::class,
                 GenerateWebPCommand::class,
                 GenerateCriticalCssCommand::class,
                 WarmCacheCommand::class,
