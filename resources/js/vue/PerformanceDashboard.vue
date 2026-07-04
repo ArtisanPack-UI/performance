@@ -23,19 +23,13 @@ interface PerformanceDashboardProps extends UsePerformanceOptions {
 	cardClassName?: string;
 }
 
-const DEFAULT_TABS: PerformanceDashboardTab[] = [
-	'overview',
-	'pages',
-	'images',
-	'cache',
-	'queries',
-	'recommendations',
-];
-
 const props = withDefaults( defineProps<PerformanceDashboardProps>(), {
 	initialRange: '7d',
 	initialTab: 'overview',
-	tabs: () => DEFAULT_TABS,
+	// Inlined instead of referencing a top-level const because
+	// `defineProps` is hoisted outside setup() and cannot see local
+	// bindings — the Vue SFC compiler errors on that reference.
+	tabs: () => [ 'overview', 'pages', 'images', 'cache', 'queries', 'recommendations' ],
 } );
 
 const RANGES: DateRangeKey[] = [ '24h', '7d', '30d', '90d' ];
