@@ -89,7 +89,7 @@ it( 'skips files that already have a WebP sibling unless --force is set', functi
 } );
 
 it( 'returns success with a warning when no convertible files are found', function (): void {
-    $this->artisan( 'perf:generate-webp', ['path' => imageFixturesDir()])
-        ->expectsOutputToContain( 'No convertible images found')
+    $this->artisan( 'perf:generate-webp', ['path' => imageFixturesDir()] )
+        ->expectsOutputToContain( 'No convertible images found' )
         ->assertSuccessful();
-});
+} );

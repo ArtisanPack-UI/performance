@@ -170,8 +170,8 @@ final class ResourceHints extends Component
         $list = array_values( array_filter( array_map(
             static fn ( mixed $value ): string => strtolower( trim( (string) $value ) ),
             $list,
-        )));
+        ) ) );
 
-        return empty( $list) ? null : $list;
+        return empty( $list ) ? null : $list;
     }
 }

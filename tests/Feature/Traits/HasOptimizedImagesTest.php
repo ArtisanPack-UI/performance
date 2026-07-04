@@ -218,13 +218,13 @@ it( 'falls back to public_path resolution when the value is web-relative', funct
 
     $model              = new TraitModelStub;
     $model->imageConfig = ['photo' => ['sizes' => [100]]];
-    $model->setRawAttributes( ['photo' => '/web-relative.jpg']);
+    $model->setRawAttributes( ['photo' => '/web-relative.jpg'] );
 
-    $srcset = $model->getImageSrcset( 'photo');
+    $srcset = $model->getImageSrcset( 'photo' );
 
-    expect( $srcset)->toContain( '100w')
-        ->and( $srcset)->toStartWith( '/');
+    expect( $srcset )->toContain( '100w' )
+        ->and( $srcset )->toStartWith( '/' );
 
-    @unlink( $source);
+    @unlink( $source );
     @rmdir( $publicDir);
 });

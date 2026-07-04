@@ -64,7 +64,7 @@ it( 'removes URLs that match glob patterns via clear()', function (): void {
 
 it( 'ignores empty URLs at registration', function (): void {
     $manager = new PrefetchManager;
-    $manager->register( ['', '   ']);
+    $manager->register( ['', '   '] );
 
-    expect( $manager->hasUrls())->toBeFalse();
-});
+    expect( $manager->hasUrls() )->toBeFalse();
+} );

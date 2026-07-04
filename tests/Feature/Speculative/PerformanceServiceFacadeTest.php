@@ -35,5 +35,5 @@ it( 'clears a prerender URL through the facade', function (): void {
     Performance::prerender( ['/checkout', '/cart'] );
     Performance::clearPrerender( '/cart' );
 
-    expect( app( PrerenderManager::class)->all())->toBe( ['/checkout']);
+    expect( app( PrerenderManager::class )->all() )->toBe( ['/checkout'] );
 });

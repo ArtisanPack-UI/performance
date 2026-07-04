@@ -259,7 +259,7 @@ final class LazyImage extends Component
         }
 
         // 5-character form is `#rgba`; alpha = `0` is fully transparent.
-        if ( 5 === strlen( $color ) && '0' === substr( $color, -1)) {
+        if ( 5 === strlen( $color ) && '0' === substr( $color, -1 ) ) {
             return false;
         }
 

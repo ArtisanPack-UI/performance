@@ -397,9 +397,9 @@ class ResourceHintInjector
                     continue;
                 }
 
-                $hint = ResourceHint::fromConfigEntry( $rel, $entry);
+                $hint = ResourceHint::fromConfigEntry( $rel, $entry );
 
-                if ( null !== $hint) {
+                if ( null !== $hint ) {
                     yield $hint;
                 }
             }

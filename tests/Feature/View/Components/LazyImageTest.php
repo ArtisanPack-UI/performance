@@ -187,13 +187,13 @@ it( 'forwards srcset and sizes attributes when provided', function (): void {
     );
 
     expect( $html )->toContain( 'srcset="/img/h-200.jpg 200w"' )
-        ->and( $html )->toContain( 'sizes="100vw"');
-});
+        ->and( $html )->toContain( 'sizes="100vw"' );
+} );
 
 it( 'falls back to none when the placeholder strategy is unknown', function (): void {
-    $component = new LazyImage( '/img/hero.jpg', 'Hero', placeholder: 'mystery');
+    $component = new LazyImage( '/img/hero.jpg', 'Hero', placeholder: 'mystery' );
 
-    expect( $component->resolvedPlaceholder)->toBe( 'none')
-        ->and( $component->shouldUseSkeleton())->toBeFalse()
-        ->and( $component->shouldUseBlurPlaceholder())->toBeFalse();
+    expect( $component->resolvedPlaceholder )->toBe( 'none' )
+        ->and( $component->shouldUseSkeleton() )->toBeFalse()
+        ->and( $component->shouldUseBlurPlaceholder() )->toBeFalse();
 });

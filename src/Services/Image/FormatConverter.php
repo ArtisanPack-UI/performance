@@ -380,10 +380,10 @@ class FormatConverter
      *
      * @return string Absolute path for the converted file.
      */
-    protected function targetPath( string $path, string $format): string
+    protected function targetPath( string $path, string $format ): string
     {
-        $directory = dirname( $path);
-        $basename  = pathinfo( $path, PATHINFO_FILENAME);
+        $directory = dirname( $path );
+        $basename  = pathinfo( $path, PATHINFO_FILENAME );
 
         return $directory . DIRECTORY_SEPARATOR . $basename . '.' . $format;
     }

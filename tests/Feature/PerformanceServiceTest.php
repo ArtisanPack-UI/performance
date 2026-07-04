@@ -127,14 +127,14 @@ it( 'returns no-op defaults for metric and recommendation methods', function ():
     // recordMetric is a no-op; just assert it returns void without throwing.
     $service->recordMetric( 'LCP', 1234.5 );
     expect( true )->toBeTrue();
-});
+} );
 
 it( 'returns a ScriptRegistration from the script() facade entry point', function (): void {
-    $service = app( PerformanceService::class);
+    $service = app( PerformanceService::class );
 
-    $registration = $service->script( '/js/app.js');
+    $registration = $service->script( '/js/app.js' );
 
-    expect( $registration)->toBeInstanceOf( ScriptRegistration::class)
-        ->and( $registration->src)->toBe( '/js/app.js')
-        ->and( $service->getScripts())->toContain( $registration);
+    expect( $registration )->toBeInstanceOf( ScriptRegistration::class )
+        ->and( $registration->src )->toBe( '/js/app.js' )
+        ->and( $service->getScripts() )->toContain( $registration);
 });

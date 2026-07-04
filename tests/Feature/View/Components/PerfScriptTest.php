@@ -106,8 +106,8 @@ it( 'does not park a script when load-on resolves to an empty trigger list', fun
     // strategy to conditional but emit no data-load-on, leaving the
     // runtime with no trigger to act on. The component must only
     // auto-switch to conditional when at least one trigger survives.
-    $html = Blade::render( '<x-perf-script src="/js/app.js" load-on="" />');
+    $html = Blade::render( '<x-perf-script src="/js/app.js" load-on="" />' );
 
-    expect( $html)->toContain( '<script src="/js/app.js" defer')
-        ->and( $html)->not->toContain( 'application/x-perf-script');
+    expect( $html )->toContain( '<script src="/js/app.js" defer' )
+        ->and( $html )->not->toContain( 'application/x-perf-script' );
 });

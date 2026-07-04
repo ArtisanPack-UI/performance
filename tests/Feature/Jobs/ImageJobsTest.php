@@ -136,8 +136,8 @@ it( 'chains the optimization jobs into a single queued pipeline', function (): v
     Bus::chain( [
         new ConvertImageFormatJob( '/tmp/h.jpg', 'webp', 80 ),
         new ConvertImageFormatJob( '/tmp/h.jpg', 'avif', 70 ),
-        new GenerateResponsiveSizesJob( '/tmp/h.jpg', [320, 640]),
-    ])->dispatch();
+        new GenerateResponsiveSizesJob( '/tmp/h.jpg', [320, 640] ),
+    ] )->dispatch();
 
     Bus::assertChained( [
         ConvertImageFormatJob::class,

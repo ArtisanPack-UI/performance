@@ -73,4 +73,4 @@ it( 'flushes every registered URL', function (): void {
 
     expect( $manager->all() )->toBe( [] )
         ->and( $manager->hasUrls() )->toBeFalse();
-});
+} );

@@ -117,7 +117,7 @@ final class CriticalCss extends Component
 
         try {
             return app( CriticalCssExtractor::class )->forRoute( $route );
-        } catch ( Throwable) {
+        } catch ( Throwable ) {
             return '';
         }
     }

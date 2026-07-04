@@ -209,13 +209,13 @@ it( 'reports per-driver format support honestly', function (): void {
     $converter = new FormatConverter( 'gd' );
 
     expect( $converter->supports( 'webp' ) )->toBe( function_exists( 'imagewebp' ) )
-        ->and( $converter->supports( 'avif'))->toBe( function_exists( 'imageavif'))
-        ->and( $converter->supports( 'unsupported'))->toBeFalse();
-});
+        ->and( $converter->supports( 'avif' ) )->toBe( function_exists( 'imageavif' ) )
+        ->and( $converter->supports( 'unsupported' ) )->toBeFalse();
+} );
 
 it( 'rejects an unsupported source format when converting', function (): void {
-    $source = makeTestImage( 'unsupported-target.jpg', 80, 80);
+    $source = makeTestImage( 'unsupported-target.jpg', 80, 80 );
 
-    expect( fn () => (new FormatConverter( 'gd'))->convert( $source, 'tiff', 80))
+    expect( fn () => (new FormatConverter( 'gd' ))->convert( $source, 'tiff', 80 ) )
         ->toThrow( RuntimeException::class, 'Unsupported target format');
 });

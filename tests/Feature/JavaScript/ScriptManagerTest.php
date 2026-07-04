@@ -164,15 +164,15 @@ it( 'reads the default strategy from package config when none is chosen', functi
     // Set config AFTER construction to prove the strategy is resolved lazily —
     // constructor-time reads would miss user overrides applied later in the
     // boot sequence (e.g. a sibling service provider's boot() phase).
-    config( ['artisanpack.performance.javascript.default_strategy' => 'async']);
+    config( ['artisanpack.performance.javascript.default_strategy' => 'async'] );
 
-    expect( $script->strategy())->toBe( 'async');
-});
+    expect( $script->strategy() )->toBe( 'async' );
+} );
 
 it( 'pins the strategy through explicit setters and short-circuits the lazy lookup', function (): void {
-    $script = (new ScriptRegistration( '/js/x.js'))->module();
+    $script = (new ScriptRegistration( '/js/x.js' ))->module();
 
-    config( ['artisanpack.performance.javascript.default_strategy' => 'async']);
+    config( ['artisanpack.performance.javascript.default_strategy' => 'async'] );
 
-    expect( $script->strategy())->toBe( 'module');
+    expect( $script->strategy() )->toBe( 'module');
 });

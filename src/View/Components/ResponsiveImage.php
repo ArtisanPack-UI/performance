@@ -386,10 +386,10 @@ final class ResponsiveImage extends Component
      */
     protected function resolveGenerator(): ResponsiveImageGenerator
     {
-        if ( function_exists( 'app')) {
+        if ( function_exists( 'app' ) ) {
             try {
-                return app( ResponsiveImageGenerator::class);
-            } catch ( Throwable) {
+                return app( ResponsiveImageGenerator::class );
+            } catch ( Throwable ) {
                 // Container missing the binding (test edge cases) — fall through.
             }
         }

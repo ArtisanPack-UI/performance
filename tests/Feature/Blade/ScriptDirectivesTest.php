@@ -55,8 +55,8 @@ it( 'escapes hostile script URLs to prevent breakout', function (): void {
     // The strategy must htmlspecialchars the URL before splatting it into
     // the attribute syntax — otherwise a `"` lets them break out and add
     // `onerror=` payloads.
-    $html = Blade::render( "@deferScript('/js/x.js\" onerror=\"alert(1)')");
+    $html = Blade::render( "@deferScript('/js/x.js\" onerror=\"alert(1)')" );
 
-    expect( $html)->not->toContain( '" onerror="alert(1)"')
-        ->and( $html)->toContain( '&quot;');
+    expect( $html )->not->toContain( '" onerror="alert(1)"' )
+        ->and( $html )->toContain( '&quot;' );
 });

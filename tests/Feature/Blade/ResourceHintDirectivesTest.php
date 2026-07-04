@@ -46,7 +46,7 @@ it( 'fails soft on invalid hrefs rather than blowing up the template', function 
     // The directive contract is to swallow `InvalidArgumentException` so an
     // empty href never breaks Blade — regression guard for the catch block
     // in ResourceHintDirectives.
-    $html = Blade::render( "<head>@preconnect('')</head>");
+    $html = Blade::render( "<head>@preconnect('')</head>" );
 
-    expect( $html)->toBe( '<head></head>');
+    expect( $html )->toBe( '<head></head>' );
 });

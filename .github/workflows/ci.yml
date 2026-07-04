@@ -109,15 +109,10 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
 
-      - name: Run Unit tests
-        env:
-          XDEBUG_MODE: off
-        run: php vendor/bin/pest tests/Unit --no-coverage
-
       - name: Run Feature tests
         env:
           XDEBUG_MODE: off
-        run: php vendor/bin/pest tests/Feature --no-coverage
+        run: php vendor/bin/pest --testsuite=Feature --no-coverage
 
   coverage:
     runs-on: ubuntu-latest

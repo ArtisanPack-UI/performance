@@ -237,10 +237,10 @@ class PerfScript extends Component
 
         try {
             return app( ScriptManager::class )->renderOne( $registration );
-        } catch ( Throwable) {
+        } catch ( Throwable ) {
             $manager = new ScriptManager;
 
-            return $manager->renderOne( $registration);
+            return $manager->renderOne( $registration );
         }
     }
 }

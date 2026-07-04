@@ -106,11 +106,11 @@ it( 'returns a white fallback when every sample is transparent', function (): vo
     $transparent = imagecolorallocatealpha( $image, 0, 0, 0, 127 );
     imagealphablending( $image, false );
     imagesavealpha( $image, true );
-    imagefilledrectangle( $image, 0, 0, 20, 20, $transparent);
-    imagepng( $image, $source);
-    imagedestroy( $image);
+    imagefilledrectangle( $image, 0, 0, 20, 20, $transparent );
+    imagepng( $image, $source );
+    imagedestroy( $image );
 
-    $extractor = new DominantColorExtractor( 'average', new Repository( new ArrayStore));
+    $extractor = new DominantColorExtractor( 'average', new Repository( new ArrayStore ) );
 
-    expect( $extractor->extract( $source))->toBe( '#ffffff');
+    expect( $extractor->extract( $source ) )->toBe( '#ffffff');
 });

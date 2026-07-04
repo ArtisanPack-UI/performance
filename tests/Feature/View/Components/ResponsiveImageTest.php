@@ -263,10 +263,10 @@ it( 'degrades to a bare img when generation throws', function (): void {
 
         public function resize( string $path, int $width, ?int $height = null ): string
         {
-            throw new RuntimeException( 'boom');
+            throw new RuntimeException( 'boom' );
         }
 
-        public function supportsFormat( string $format): bool
+        public function supportsFormat( string $format ): bool
         {
             return true;
         }
@@ -274,13 +274,13 @@ it( 'degrades to a bare img when generation throws', function (): void {
 
     app()->instance(
         ResponsiveImageGenerator::class,
-        new ResponsiveImageGenerator( $brokenImages),
+        new ResponsiveImageGenerator( $brokenImages ),
     );
 
-    $component = new ResponsiveImage( '/perf-resp-test/stage-throws.jpg', 'Hero');
+    $component = new ResponsiveImage( '/perf-resp-test/stage-throws.jpg', 'Hero' );
 
-    expect( $component->avifSrcset)->toBe( '')
-        ->and( $component->webpSrcset)->toBe( '')
-        ->and( $component->fallbackSrcset)->toBe( '')
-        ->and( $component->fallbackSrc)->toBe( '/perf-resp-test/stage-throws.jpg');
+    expect( $component->avifSrcset )->toBe( '' )
+        ->and( $component->webpSrcset )->toBe( '' )
+        ->and( $component->fallbackSrcset )->toBe( '' )
+        ->and( $component->fallbackSrc )->toBe( '/perf-resp-test/stage-throws.jpg');
 });

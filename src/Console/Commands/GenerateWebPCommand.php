@@ -217,8 +217,8 @@ class GenerateWebPCommand extends Command
      */
     protected function targetPath( string $path ): string
     {
-        $directory = dirname( $path);
-        $basename  = pathinfo( $path, PATHINFO_FILENAME);
+        $directory = dirname( $path );
+        $basename  = pathinfo( $path, PATHINFO_FILENAME );
 
         return $directory . DIRECTORY_SEPARATOR . $basename . '.webp';
     }

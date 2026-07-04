@@ -121,9 +121,9 @@ it( 'clears manual and auto-detected hints but preserves providers', function ()
     $injector->clear();
 
     $hosts = array_map(
-        static fn ( ResourceHint $hint): string => $hint->href,
+        static fn ( ResourceHint $hint ): string => $hint->href,
         $injector->all(),
     );
 
-    expect( $hosts)->toBe( ['https://providers.test']);
+    expect( $hosts )->toBe( ['https://providers.test'] );
 });

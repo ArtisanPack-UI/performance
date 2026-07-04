@@ -110,4 +110,4 @@ it( 'rejects non-numeric Vimeo IDs', function (): void {
     $optimizer = new EmbedOptimizer;
 
     $optimizer->facade( 'vimeo', 'abc123' );
-} )->throws( InvalidArgumentException::class);
+} )->throws( InvalidArgumentException::class );

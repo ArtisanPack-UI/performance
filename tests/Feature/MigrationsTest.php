@@ -39,5 +39,5 @@ it( 'creates the performance_optimized_images table with the expected columns', 
             'id', 'original_path', 'optimized_path', 'format',
             'width', 'height', 'original_size', 'optimized_size',
             'compression_ratio', 'dominant_color', 'metadata',
-        ]))->toBeTrue();
-});
+        ] ) )->toBeTrue();
+} );

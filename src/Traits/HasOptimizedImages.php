@@ -473,10 +473,10 @@ trait HasOptimizedImages
      */
     protected function responsiveGenerator(): ResponsiveImageGenerator
     {
-        if ( function_exists( 'app')) {
+        if ( function_exists( 'app' ) ) {
             try {
-                return app( ResponsiveImageGenerator::class);
-            } catch ( Throwable) {
+                return app( ResponsiveImageGenerator::class );
+            } catch ( Throwable ) {
                 // Container missing the binding — fall through.
             }
         }
@@ -491,10 +491,10 @@ trait HasOptimizedImages
      */
     protected function imageService(): ImageService
     {
-        if ( function_exists( 'app')) {
+        if ( function_exists( 'app' ) ) {
             try {
-                return app( ImageService::class);
-            } catch ( Throwable) {
+                return app( ImageService::class );
+            } catch ( Throwable ) {
                 // Container missing the binding — fall through.
             }
         }

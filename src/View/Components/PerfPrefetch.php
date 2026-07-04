@@ -93,6 +93,6 @@ final class PerfPrefetch extends Component
             $normalized[ $url ] = $url;
         }
 
-        return array_values( $normalized);
+        return array_values( $normalized );
     }
 }

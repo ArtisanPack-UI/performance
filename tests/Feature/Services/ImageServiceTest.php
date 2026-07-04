@@ -222,15 +222,15 @@ it( 'throws for unknown placeholder types', function (): void {
 } );
 
 it( 'throws when optimizing a missing source image', function (): void {
-    $service = new ImageService( new FormatConverter( 'gd'));
+    $service = new ImageService( new FormatConverter( 'gd' ) );
 
-    expect( fn () => $service->optimize( '/no/such/file.jpg'))
-        ->toThrow( RuntimeException::class, 'Source image is not readable');
-});
+    expect( fn () => $service->optimize( '/no/such/file.jpg' ) )
+        ->toThrow( RuntimeException::class, 'Source image is not readable' );
+} );
 
 it( 'delegates supportsFormat to the underlying converter', function (): void {
-    $service = new ImageService( new FormatConverter( 'gd'));
+    $service = new ImageService( new FormatConverter( 'gd' ) );
 
-    expect( $service->supportsFormat( 'webp'))->toBe( function_exists( 'imagewebp'))
-        ->and( $service->supportsFormat( 'avif'))->toBe( function_exists( 'imageavif'));
+    expect( $service->supportsFormat( 'webp' ) )->toBe( function_exists( 'imagewebp' ) )
+        ->and( $service->supportsFormat( 'avif' ) )->toBe( function_exists( 'imageavif'));
 });

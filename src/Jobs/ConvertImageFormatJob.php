@@ -98,6 +98,6 @@ class ConvertImageFormatJob implements ShouldQueue
         $quality = $this->quality
             ?? (int) config( "artisanpack.performance.images.formats.{$format}.quality", 80 );
 
-        $images->convertFormat( $this->path, $format, $quality);
+        $images->convertFormat( $this->path, $format, $quality );
     }
 }

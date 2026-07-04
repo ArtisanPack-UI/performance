@@ -381,14 +381,14 @@ it( 'drops Link header values that would break the header grammar', function ():
     // from the header pathway (HTML rendering remains safe because
     // toLinkElement HTML-escapes every value).
     app( ResourceHintInjector::class )->preconnect( 'https://fonts.googleapis.com' );
-    app( ResourceHintInjector::class)->addAutoDetected( new ResourceHint(
+    app( ResourceHintInjector::class )->addAutoDetected( new ResourceHint(
         rel: 'preload',
         href: '/x.bin',
         type: 'font/woff2"; rel=stylesheet; nopush',
-    ));
+    ) );
 
     $response = performMiddleware(
-        Request::create( '/', 'GET'),
+        Request::create( '/', 'GET' ),
         new Response(
             '<!doctype html><html><head></head><body></body></html>',
             200,
@@ -396,8 +396,8 @@ it( 'drops Link header values that would break the header grammar', function ():
         ),
     );
 
-    $link = $response->headers->get( 'Link');
+    $link = $response->headers->get( 'Link' );
 
-    expect( $link)->toContain( 'fonts.googleapis.com')
-        ->and( $link)->not->toContain( 'nopush');
+    expect( $link )->toContain( 'fonts.googleapis.com' )
+        ->and( $link )->not->toContain( 'nopush');
 });
