@@ -5,6 +5,8 @@ declare( strict_types=1 );
 namespace Tests;
 
 use ArtisanPackUI\Performance\PerformanceServiceProvider;
+use Illuminate\Foundation\Application;
+use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 
 /**
@@ -29,13 +31,14 @@ abstract class TestCase extends BaseTestCase
      *
      * @since 1.0.0
      *
-     * @param  \Illuminate\Foundation\Application  $app  The application instance.
+     * @param  Application  $app  The application instance.
      *
      * @return array<int, class-string> Array of service provider class names.
      */
-    protected function getPerformanceProviders( $app ): array
+    protected function getPackageProviders( $app ): array
     {
         return [
+            LivewireServiceProvider::class,
             PerformanceServiceProvider::class,
         ];
     }
@@ -45,7 +48,7 @@ abstract class TestCase extends BaseTestCase
      *
      * @since 1.0.0
      *
-     * @param  \Illuminate\Foundation\Application  $app  The application instance.
+     * @param  Application  $app  The application instance.
      */
     protected function defineEnvironment( $app ): void
     {

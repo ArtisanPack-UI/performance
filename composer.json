@@ -1,8 +1,8 @@
 {
   "name": "artisanpack-ui/performance",
-  "description": "package name",
+  "description": "Comprehensive performance optimization toolkit for Laravel applications: image optimization, JS/CSS strategies, resource hints, speculative loading, page and fragment caching, query analysis, and real-user performance monitoring.",
   "type": "library",
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "version": "1.0.0",
   "autoload": {
     "psr-4": {
@@ -35,18 +35,25 @@
     "artisanpack-ui/code-style-pint": "^1.1",
     "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
     "laravel/pint": "^1.26",
+    "livewire/livewire": "^3.6",
     "orchestra/testbench": "^10.2|^11.0",
     "friendsofphp/php-cs-fixer": "^3.75"
   },
+  "suggest": {
+    "livewire/livewire": "Required for the bundled performance dashboard, metrics chart, and cache manager Livewire components (^3.6)."
+  },
   "scripts": {
     "lint": [
-      "./vendor/bin/php-cs-fixer fix --dry-run --diff",
+      "./vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no",
       "./vendor/bin/phpcs"
     ],
-    "fix": "./vendor/bin/php-cs-fixer fix",
+    "fix": "./vendor/bin/php-cs-fixer fix --using-cache=no",
     "cs": "./vendor/bin/phpcs",
     "cs:fix": "./vendor/bin/phpcbf",
-    "test": "./vendor/bin/pest"
+    "test": "./vendor/bin/pest",
+    "test:coverage": "./vendor/bin/pest --coverage --min=80",
+    "test:coverage-html": "./vendor/bin/pest --coverage --coverage-html=coverage",
+    "bench": "PERF_RUN_BENCHMARKS=1 ./vendor/bin/pest --testsuite=Benchmarks"
   },
   "config": {
     "allow-plugins": {
