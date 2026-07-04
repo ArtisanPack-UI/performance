@@ -1,10 +1,10 @@
 # Security Audit — v1.0.0
 
 This document records the pre-release security audit performed against
-`artisanpack-ui/performance` on the `release/1.0` branch. The scope
-mirrors the checklist in the tracking issue: input validation, output
-escaping, authentication/authorization, file security, cache security,
-configuration security, and general code hygiene.
+`artisanpack-ui/performance` before the v1.0.0 release. The scope covers
+input validation, output escaping, authentication/authorization, file
+security, cache security, configuration security, and general code
+hygiene.
 
 - **Audit date:** 2026-07-03
 - **Scope:** every file under `src/`, `routes/`, `resources/`, `config/`

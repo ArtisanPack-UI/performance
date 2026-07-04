@@ -119,11 +119,26 @@ Performance::script(asset('js/analytics.js'))
 - [Artisan commands](docs/api/artisan.md)
 - [JavaScript API](docs/api/javascript.md)
 
-### Benchmarks & security
+### Benchmarks
 
-- [Server-side benchmarks](docs/benchmarks/server-side.md)
-- [Client-side benchmarks](docs/benchmarks/client-side.md)
-- [Security audit — v1.0.0](docs/security/audit-1.0.0.md)
+- [Overview](docs/benchmarks.md)
+- [Client-side methodology](docs/benchmarks/client-side.md)
+- [Server-side methodology](docs/benchmarks/server-side.md)
+
+### Customization
+
+- [Overview](docs/customization.md)
+- [View customization](docs/customization/views.md)
+
+### Security
+
+- [Overview](docs/security.md)
+- [Audit — v1.0.0](docs/security/audit-1.0.0.md)
+
+### Development
+
+- [Overview](docs/development.md)
+- [Code style](docs/development/code-style.md)
 
 ## Artisan commands
 

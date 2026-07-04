@@ -65,6 +65,35 @@ End-to-end walkthroughs for each major feature of the package.
 
 ---
 
+## Benchmarks
+
+- [[benchmarks]] — Overview and Web Vitals targets
+- [[benchmarks/client-side]] — Lighthouse recipe and page-type matrix
+- [[benchmarks/server-side]] — Pest benchmark suite methodology
+
+---
+
+## Customization
+
+- [[customization]] — Overview of the customization surface
+- [[customization/views]] — Blade templates, prop reference, CSS custom properties, JS bundle overrides
+
+---
+
+## Security
+
+- [[security]] — Security policy and reporting a vulnerability
+- [[security/audit-1.0.0]] — Pre-release security audit for v1.0.0
+
+---
+
+## Development
+
+- [[development]] — Contributor overview
+- [[development/code-style]] — Package code standard and the tooling that enforces it
+
+---
+
 ## Module Quick Reference
 
 | Area | Purpose | Status |
