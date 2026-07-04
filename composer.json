@@ -50,7 +50,10 @@
     "fix": "./vendor/bin/php-cs-fixer fix",
     "cs": "./vendor/bin/phpcs",
     "cs:fix": "./vendor/bin/phpcbf",
-    "test": "./vendor/bin/pest"
+    "test": "./vendor/bin/pest",
+    "test:coverage": "./vendor/bin/pest --coverage --min=80",
+    "test:coverage-html": "./vendor/bin/pest --coverage --coverage-html=coverage",
+    "bench": "PERF_RUN_BENCHMARKS=1 ./vendor/bin/pest --testsuite=Benchmarks"
   },
   "config": {
     "allow-plugins": {

@@ -240,3 +240,38 @@ it( 'mixes SQL into the cache key even when a custom key is supplied', function 
     expect( $authorOnly->count() )->toBe( 1 );
 } );
 
+it( 'rejects a tampered cache payload and re-runs the query', function (): void {
+    // The signing check should catch any entry whose serialized body
+    // does not match the stored HMAC — a real attacker (or a rogue
+    // cache-tenant) is modeled by writing a raw serialize() blob
+    // that would deserialize to a non-Collection value.
+    $count = 0;
+    DB::listen( function () use ( &$count ): void { $count++; } );
+
+    CachesQueriesPostStub::query()->cacheFor( 60 )->get();
+
+    expect( $count )->toBe( 1 );
+
+    $store       = Cache::store( 'file' )->getStore();
+    $reflection  = new ReflectionObject( $store );
+    $storageProp = $reflection->getProperty( 'storage' );
+    $storageProp->setAccessible( true );
+    $entries = $storageProp->getValue( $store );
+
+    $key = collect( $entries )->keys()->first(
+        fn ( string $candidate ): bool => str_contains( $candidate, 'perf:query:' ),
+    );
+
+    expect( $key )->not->toBeNull();
+
+    // Overwrite the cached signed payload with unsigned tampered
+    // bytes. The verifier should reject it, forget the entry, and
+    // fall through to the query callback again.
+    Cache::store( 'file' )->put( $key, serialize( [ 'tampered' => true ] ), 60 );
+
+    $refreshed = CachesQueriesPostStub::query()->cacheFor( 60 )->get();
+
+    expect( $refreshed )->toHaveCount( 3 );
+    expect( $count )->toBe( 2 );
+} );
+

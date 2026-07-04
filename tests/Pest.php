@@ -16,6 +16,9 @@ use Tests\TestCase;
 pest()->extend( TestCase::class )
     ->in( 'Feature' );
 
+pest()->extend( TestCase::class )
+    ->in( 'Benchmarks' );
+
 /*
 |--------------------------------------------------------------------------
 | Expectations
@@ -108,11 +111,11 @@ function clearImageFixtures(): void
                 }
                 @unlink( $path . DIRECTORY_SEPARATOR . $nested );
             }
-            @rmdir( $path);
+            @rmdir( $path );
 
             continue;
         }
 
-        @unlink( $path);
+        @unlink( $path );
     }
 }

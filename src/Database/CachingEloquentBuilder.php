@@ -273,14 +273,96 @@ class CachingEloquentBuilder extends Builder
         $hit    = $scoped->get( $key );
 
         if ( is_string( $hit ) ) {
-            return unserialize( $hit, [ 'allowed_classes' => true ] );
+            $verified = $this->verifyCachedPayload( $hit );
+
+            if ( null !== $verified ) {
+                return unserialize( $verified, [ 'allowed_classes' => true ] );
+            }
+
+            // Payload failed the HMAC signature check — treat as a MISS.
+            // A shared-cache backend that has been tampered with (or a
+            // pre-signing entry that survived a package upgrade) would
+            // otherwise deserialize attacker-controlled objects.
+            $scoped->forget( $key );
         }
 
         $value = $callback();
 
-        $scoped->put( $key, serialize( $value ), $this->cacheTtl );
+        $scoped->put( $key, $this->signCachedPayload( serialize( $value ) ), $this->cacheTtl );
 
         return $value;
+    }
+
+    /**
+     * Signs a serialized payload with an HMAC over the application key.
+     *
+     * The prefix isolates signed entries from any legacy plain-serialize
+     * payloads a previous version wrote — reading such an entry back
+     * fails the signature check and falls through to a fresh compute,
+     * which is the desired backfill behavior.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $serialized  Raw `serialize()` output.
+     */
+    protected function signCachedPayload( string $serialized ): string
+    {
+        $signature = hash_hmac( 'sha256', $serialized, $this->cacheSigningKey() );
+
+        return 'perf:v1:' . $signature . ':' . $serialized;
+    }
+
+    /**
+     * Verifies the signature on a cached payload and returns the raw serialize()
+     * bytes, or null when the payload is unsigned or the signature does not match.
+     *
+     * `hash_equals` guards against timing-based signature discovery even
+     * though the attacker model here is cache-tampering rather than
+     * network probing — using a constant-time compare is cheap and
+     * removes the class of concern entirely.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $payload  Payload read from the cache.
+     */
+    protected function verifyCachedPayload( string $payload ): ?string
+    {
+        if ( ! str_starts_with( $payload, 'perf:v1:' ) ) {
+            return null;
+        }
+
+        $rest      = substr( $payload, strlen( 'perf:v1:' ) );
+        $separator = strpos( $rest, ':' );
+
+        if ( false === $separator || 64 !== $separator ) {
+            return null;
+        }
+
+        $expected   = substr( $rest, 0, 64 );
+        $serialized = substr( $rest, $separator + 1 );
+        $actual     = hash_hmac( 'sha256', $serialized, $this->cacheSigningKey() );
+
+        return hash_equals( $expected, $actual ) ? $serialized : null;
+    }
+
+    /**
+     * Returns the key used to sign cached payloads.
+     *
+     * Prefers `app.key` (the framework-managed random key applications
+     * generate via `php artisan key:generate`) and falls back to a
+     * deterministic marker so the signing/verification round trip still
+     * works in the rare `key`-less test harness. Applications running
+     * without an app key are already outside the framework's supported
+     * configuration, so the fallback exists only to keep unit tests
+     * green rather than to protect anything meaningful.
+     *
+     * @since 1.0.0
+     */
+    protected function cacheSigningKey(): string
+    {
+        $key = (string) config( 'app.key', '' );
+
+        return '' !== $key ? $key : 'artisanpack-performance-unsigned';
     }
 
     /**
