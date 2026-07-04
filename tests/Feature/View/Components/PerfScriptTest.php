@@ -110,4 +110,4 @@ it( 'does not park a script when load-on resolves to an empty trigger list', fun
 
     expect( $html )->toContain( '<script src="/js/app.js" defer' )
         ->and( $html )->not->toContain( 'application/x-perf-script' );
-});
+} );

@@ -45,4 +45,4 @@ it( 'produces no output for an empty URL list', function (): void {
     );
 
     expect( trim( $html ) )->toBe( '' );
-});
+} );

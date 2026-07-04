@@ -143,5 +143,5 @@ it( 'chains the optimization jobs into a single queued pipeline', function (): v
         ConvertImageFormatJob::class,
         ConvertImageFormatJob::class,
         GenerateResponsiveSizesJob::class,
-    ]);
+    ] );
 });

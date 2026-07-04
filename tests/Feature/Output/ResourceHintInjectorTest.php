@@ -126,4 +126,4 @@ it( 'clears manual and auto-detected hints but preserves providers', function ()
     );
 
     expect( $hosts )->toBe( ['https://providers.test'] );
-});
+} );

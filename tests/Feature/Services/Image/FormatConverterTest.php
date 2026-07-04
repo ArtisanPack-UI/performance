@@ -154,5 +154,5 @@ it( 'reports usesImagick only when the driver is imagick and the extension is lo
     $imagick = new FormatConverter( 'imagick' );
 
     expect( $gd->usesImagick() )->toBeFalse()
-        ->and( $imagick->usesImagick() )->toBe( class_exists( Imagick::class));
-});
+        ->and( $imagick->usesImagick() )->toBe( class_exists( Imagick::class ) );
+} );

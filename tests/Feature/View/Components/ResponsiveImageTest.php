@@ -282,5 +282,5 @@ it( 'degrades to a bare img when generation throws', function (): void {
     expect( $component->avifSrcset )->toBe( '' )
         ->and( $component->webpSrcset )->toBe( '' )
         ->and( $component->fallbackSrcset )->toBe( '' )
-        ->and( $component->fallbackSrc )->toBe( '/perf-resp-test/stage-throws.jpg');
+        ->and( $component->fallbackSrc )->toBe( '/perf-resp-test/stage-throws.jpg' );
 });

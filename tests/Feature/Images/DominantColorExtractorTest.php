@@ -112,5 +112,5 @@ it( 'returns a white fallback when every sample is transparent', function (): vo
 
     $extractor = new DominantColorExtractor( 'average', new Repository( new ArrayStore ) );
 
-    expect( $extractor->extract( $source ) )->toBe( '#ffffff');
-});
+    expect( $extractor->extract( $source ) )->toBe( '#ffffff' );
+} );

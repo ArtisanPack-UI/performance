@@ -172,5 +172,5 @@ it( 'resolves perfOptimizeImage and the facade to the same ImageService instance
     // Regression: helpers must route through the container so swapping ImageService
     // in tests (or in app code) takes effect for all helper calls.
     expect( performance()->images() )->toBeInstanceOf( ImageService::class )
-        ->and( performance()->images() )->toBe( app( ImageService::class));
-});
+        ->and( performance()->images() )->toBe( app( ImageService::class ) );
+} );

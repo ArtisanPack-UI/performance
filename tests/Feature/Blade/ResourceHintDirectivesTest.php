@@ -49,4 +49,4 @@ it( 'fails soft on invalid hrefs rather than blowing up the template', function 
     $html = Blade::render( "<head>@preconnect('')</head>" );
 
     expect( $html )->toBe( '<head></head>' );
-});
+} );

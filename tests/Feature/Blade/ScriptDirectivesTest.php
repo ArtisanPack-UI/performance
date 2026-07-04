@@ -59,4 +59,4 @@ it( 'escapes hostile script URLs to prevent breakout', function (): void {
 
     expect( $html )->not->toContain( '" onerror="alert(1)"' )
         ->and( $html )->toContain( '&quot;' );
-});
+} );

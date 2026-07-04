@@ -217,5 +217,5 @@ it( 'rejects an unsupported source format when converting', function (): void {
     $source = makeTestImage( 'unsupported-target.jpg', 80, 80 );
 
     expect( fn () => (new FormatConverter( 'gd' ))->convert( $source, 'tiff', 80 ) )
-        ->toThrow( RuntimeException::class, 'Unsupported target format');
-});
+        ->toThrow( RuntimeException::class, 'Unsupported target format' );
+} );

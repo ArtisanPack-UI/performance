@@ -131,4 +131,4 @@ it( 'lets a verbose entry override the default rel', function (): void {
 
 it( 'returns null when a config entry is missing href', function (): void {
     expect( ResourceHint::fromConfigEntry( 'preconnect', ['rel' => 'preconnect'] ) )->toBeNull();
-});
+} );

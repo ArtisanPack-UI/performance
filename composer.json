@@ -44,10 +44,10 @@
   },
   "scripts": {
     "lint": [
-      "./vendor/bin/php-cs-fixer fix --dry-run --diff",
+      "./vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no",
       "./vendor/bin/phpcs"
     ],
-    "fix": "./vendor/bin/php-cs-fixer fix",
+    "fix": "./vendor/bin/php-cs-fixer fix --using-cache=no",
     "cs": "./vendor/bin/phpcs",
     "cs:fix": "./vendor/bin/phpcbf",
     "test": "./vendor/bin/pest",

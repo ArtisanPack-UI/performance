@@ -477,6 +477,6 @@ final class ResourceHint
      */
     protected function escape( string $value ): string
     {
-        return htmlspecialchars( $value, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8');
+        return htmlspecialchars( $value, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8' );
     }
 }

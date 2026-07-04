@@ -196,4 +196,4 @@ it( 'falls back to none when the placeholder strategy is unknown', function (): 
     expect( $component->resolvedPlaceholder )->toBe( 'none' )
         ->and( $component->shouldUseSkeleton() )->toBeFalse()
         ->and( $component->shouldUseBlurPlaceholder() )->toBeFalse();
-});
+} );

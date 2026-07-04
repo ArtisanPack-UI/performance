@@ -93,4 +93,4 @@ it( 'renders nothing when no hints resolve', function (): void {
 
     // Empty body except for the surrounding component shell whitespace.
     expect( trim( $html ) )->toBe( '' );
-});
+} );

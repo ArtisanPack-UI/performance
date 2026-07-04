@@ -114,5 +114,5 @@ it( 'throws when the source image is unreadable', function (): void {
     $generator = new ResponsiveImageGenerator( new ImageService( new FormatConverter( 'gd' ) ) );
 
     expect( fn () => $generator->generate( '/no/such/file.jpg' ) )
-        ->toThrow( RuntimeException::class, 'Source image is not readable');
-});
+        ->toThrow( RuntimeException::class, 'Source image is not readable' );
+} );

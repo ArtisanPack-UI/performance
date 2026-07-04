@@ -40,7 +40,7 @@ jobs:
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
       - name: Run PHP-CS-Fixer (dry-run)
-        run: ./vendor/bin/php-cs-fixer fix --dry-run --diff --show-progress=none
+        run: ./vendor/bin/php-cs-fixer fix --dry-run --diff --show-progress=none --using-cache=no
 
       - name: Run PHP_CodeSniffer
         run: ./vendor/bin/phpcs

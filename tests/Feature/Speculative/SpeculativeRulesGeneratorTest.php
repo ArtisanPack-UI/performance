@@ -151,4 +151,4 @@ it( 'uses an explicit selector when provided', function (): void {
     $decoded = json_decode( $json, true );
 
     expect( $decoded['prefetch'][0]['where']['selector_matches'] )->toBe( 'a.fast-link' );
-});
+} );

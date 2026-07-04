@@ -226,5 +226,5 @@ it( 'falls back to public_path resolution when the value is web-relative', funct
         ->and( $srcset )->toStartWith( '/' );
 
     @unlink( $source );
-    @rmdir( $publicDir);
-});
+    @rmdir( $publicDir );
+} );

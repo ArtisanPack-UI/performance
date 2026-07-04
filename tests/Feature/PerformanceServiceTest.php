@@ -136,5 +136,5 @@ it( 'returns a ScriptRegistration from the script() facade entry point', functio
 
     expect( $registration )->toBeInstanceOf( ScriptRegistration::class )
         ->and( $registration->src )->toBe( '/js/app.js' )
-        ->and( $service->getScripts() )->toContain( $registration);
-});
+        ->and( $service->getScripts() )->toContain( $registration );
+} );

@@ -399,5 +399,5 @@ it( 'drops Link header values that would break the header grammar', function ():
     $link = $response->headers->get( 'Link' );
 
     expect( $link )->toContain( 'fonts.googleapis.com' )
-        ->and( $link )->not->toContain( 'nopush');
-});
+        ->and( $link )->not->toContain( 'nopush' );
+} );

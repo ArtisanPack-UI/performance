@@ -174,5 +174,5 @@ it( 'pins the strategy through explicit setters and short-circuits the lazy look
 
     config( ['artisanpack.performance.javascript.default_strategy' => 'async'] );
 
-    expect( $script->strategy() )->toBe( 'module');
-});
+    expect( $script->strategy() )->toBe( 'module' );
+} );

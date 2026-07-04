@@ -101,4 +101,4 @@ it( 'drops attribute names with disallowed characters', function (): void {
     $html = (new DeferStrategy)->render( $script );
 
     expect( $html )->not->toContain( '"><script' );
-});
+} );

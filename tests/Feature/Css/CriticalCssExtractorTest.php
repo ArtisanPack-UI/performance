@@ -227,5 +227,5 @@ it( 'lists registered routes', function (): void {
     $extractor->registerSource( 'home', 'body{}' );
     $extractor->registerSource( 'contact', 'header{}' );
 
-    expect( $extractor->registeredRoutes() )->toEqualCanonicalizing( ['home', 'contact']);
-});
+    expect( $extractor->registeredRoutes() )->toEqualCanonicalizing( ['home', 'contact'] );
+} );

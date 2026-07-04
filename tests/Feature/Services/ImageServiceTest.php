@@ -232,5 +232,5 @@ it( 'delegates supportsFormat to the underlying converter', function (): void {
     $service = new ImageService( new FormatConverter( 'gd' ) );
 
     expect( $service->supportsFormat( 'webp' ) )->toBe( function_exists( 'imagewebp' ) )
-        ->and( $service->supportsFormat( 'avif' ) )->toBe( function_exists( 'imageavif'));
+        ->and( $service->supportsFormat( 'avif' ) )->toBe( function_exists( 'imageavif' ) );
 });
