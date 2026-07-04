@@ -97,9 +97,17 @@ export function LazyImage( props: LazyImageProps ): JSX.Element {
 
 	const combinedClassName = [ 'perf-lazy-image', className ].filter( Boolean ).join( ' ' );
 
+	// React 18 emits a "React does not recognize the `fetchPriority` prop"
+	// warning because it only accepts the lowercase DOM attribute name.
+	// React 19 uses camelCase. Spread as a plain attribute bag so we set
+	// the correct DOM attribute on both without triggering the warning.
+	const priorityAttr: Record<string, string> =
+		isSupportedFetchPriority( fetchPriority ) ? { fetchpriority: fetchPriority } : {};
+
 	const img = (
 		<img
 			{ ...rest }
+			{ ...priorityAttr }
 			src={ initialSrc }
 			data-src={ useBlur ? src : undefined }
 			alt={ alt }
@@ -109,7 +117,6 @@ export function LazyImage( props: LazyImageProps ): JSX.Element {
 			height={ height }
 			srcSet={ srcSet }
 			sizes={ sizes }
-			fetchPriority={ isSupportedFetchPriority( fetchPriority ) ? fetchPriority : undefined }
 			data-threshold={ threshold }
 			className={ combinedClassName }
 			style={ { ...bgStyle, ...style } }
