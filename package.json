@@ -1,0 +1,59 @@
+{
+	"name": "@artisanpack-ui/performance",
+	"version": "1.0.0",
+	"description": "Client-side companion for artisanpack-ui/performance — vanilla JS metrics + cache client plus React and Vue components for the performance dashboard, image optimization, embeds, and speculative loading.",
+	"license": "GPL-3.0-or-later",
+	"author": {
+		"name": "Jacob Martella",
+		"email": "me@jacobmartella.com"
+	},
+	"type": "module",
+	"sideEffects": [
+		"./resources/js/performance.ts",
+		"./resources/js/web-vitals.js",
+		"./resources/js/metrics-chart.js",
+		"./resources/js/speculative-rules.js"
+	],
+	"exports": {
+		".": {
+			"types": "./resources/js/performance.ts",
+			"import": "./resources/js/performance.ts"
+		},
+		"./web-vitals": {
+			"import": "./resources/js/web-vitals.js"
+		},
+		"./metrics-chart": {
+			"import": "./resources/js/metrics-chart.js"
+		},
+		"./speculative-rules": {
+			"import": "./resources/js/speculative-rules.js"
+		},
+		"./react": {
+			"types": "./resources/js/react/index.ts",
+			"import": "./resources/js/react/index.ts"
+		},
+		"./vue": {
+			"types": "./resources/js/vue/index.ts",
+			"import": "./resources/js/vue/index.ts"
+		}
+	},
+	"files": [
+		"resources/js"
+	],
+	"peerDependencies": {
+		"react": "^18.0 || ^19.0",
+		"react-dom": "^18.0 || ^19.0",
+		"vue": "^3.4"
+	},
+	"peerDependenciesMeta": {
+		"react": {
+			"optional": true
+		},
+		"react-dom": {
+			"optional": true
+		},
+		"vue": {
+			"optional": true
+		}
+	}
+}

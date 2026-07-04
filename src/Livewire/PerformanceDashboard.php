@@ -362,7 +362,8 @@ class PerformanceDashboard extends Component
     protected function buildOverview(): array
     {
         $rows = PerformanceMetric::query()
-            ->whereBetween( 'date', [ $this->startDate(), $this->endDate() ] )
+            ->whereDate( 'date', '>=', $this->startDate()->toDateString() )
+            ->whereDate( 'date', '<=', $this->endDate()->toDateString() )
             ->selectRaw( 'metric, SUM(p75 * sample_count) as weighted_p75_sum, SUM(sample_count) as sample_count' )
             ->groupBy( 'metric' )
             ->get();
@@ -403,7 +404,8 @@ class PerformanceDashboard extends Component
     protected function buildPagesBreakdown(): array
     {
         return PerformanceMetric::query()
-            ->whereBetween( 'date', [ $this->startDate(), $this->endDate() ] )
+            ->whereDate( 'date', '>=', $this->startDate()->toDateString() )
+            ->whereDate( 'date', '<=', $this->endDate()->toDateString() )
             ->whereNotNull( 'route' )
             ->selectRaw( 'route, metric, SUM(p75 * sample_count) / NULLIF(SUM(sample_count), 0) as p75, SUM(sample_count) as sample_count' )
             ->groupBy( 'route', 'metric' )

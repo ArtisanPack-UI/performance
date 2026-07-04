@@ -487,6 +487,30 @@ class PerformanceServiceProvider extends ServiceProvider
 
         $middleware[] = 'throttle:' . $throttle;
 
+        // Admin route group needs session-capable middleware because
+        // `RecommendationsAdminApiController` persists dismissals via
+        // `Session::put/get`. The default `['api']` middleware group in
+        // Laravel 11/12 does not include `StartSession`, so we prepend
+        // it (and its dependency `EncryptCookies` + response cookie
+        // writer) here — hosts can override with a custom stack in
+        // `artisanpack.performance.routes.admin_middleware`.
+        $adminMiddleware = (array) config(
+            'artisanpack.performance.routes.admin_middleware',
+            [
+                \Illuminate\Cookie\Middleware\EncryptCookies::class,
+                \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+                \Illuminate\Session\Middleware\StartSession::class,
+                \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+            ],
+        );
+
+        $adminMiddleware[] = 'throttle:' . $throttle;
+
+        Route::middleware( $adminMiddleware )
+            ->prefix( $prefix )
+            ->name( 'artisanpack.performance.api.admin.' )
+            ->group( __DIR__ . '/../routes/api-admin.php' );
+
         Route::middleware( $middleware )
             ->prefix( $prefix )
             ->name( 'artisanpack.performance.api.' )

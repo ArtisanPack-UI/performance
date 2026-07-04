@@ -214,7 +214,8 @@ class MetricsChart extends Component
         // class-level default is reasserted whenever the resolved list
         // becomes empty so this query never produces `WHERE metric IN ()`.
         $rows = PerformanceMetric::query()
-            ->whereBetween( 'date', [ $startDate, $endDate ] )
+            ->whereDate( 'date', '>=', $startDate->toDateString() )
+            ->whereDate( 'date', '<=', $endDate->toDateString() )
             ->whereIn( 'metric', $this->metrics )
             ->selectRaw( 'metric, date, SUM(p75 * sample_count) / NULLIF(SUM(sample_count), 0) as p75' )
             ->groupBy( 'metric', 'date' )
