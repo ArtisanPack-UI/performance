@@ -44,13 +44,16 @@
   },
   "scripts": {
     "lint": [
-      "./vendor/bin/php-cs-fixer fix --dry-run --diff",
+      "./vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no",
       "./vendor/bin/phpcs"
     ],
-    "fix": "./vendor/bin/php-cs-fixer fix",
+    "fix": "./vendor/bin/php-cs-fixer fix --using-cache=no",
     "cs": "./vendor/bin/phpcs",
     "cs:fix": "./vendor/bin/phpcbf",
-    "test": "./vendor/bin/pest"
+    "test": "./vendor/bin/pest",
+    "test:coverage": "./vendor/bin/pest --coverage --min=80",
+    "test:coverage-html": "./vendor/bin/pest --coverage --coverage-html=coverage",
+    "bench": "PERF_RUN_BENCHMARKS=1 ./vendor/bin/pest --testsuite=Benchmarks"
   },
   "config": {
     "allow-plugins": {

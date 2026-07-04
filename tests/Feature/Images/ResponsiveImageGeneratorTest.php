@@ -111,8 +111,8 @@ it( 'returns an empty srcset for an unsupported requested format', function (): 
 } );
 
 it( 'throws when the source image is unreadable', function (): void {
-    $generator = new ResponsiveImageGenerator( new ImageService( new FormatConverter( 'gd')));
+    $generator = new ResponsiveImageGenerator( new ImageService( new FormatConverter( 'gd' ) ) );
 
-    expect( fn () => $generator->generate( '/no/such/file.jpg'))
-        ->toThrow( RuntimeException::class, 'Source image is not readable');
-});
+    expect( fn () => $generator->generate( '/no/such/file.jpg' ) )
+        ->toThrow( RuntimeException::class, 'Source image is not readable' );
+} );

@@ -578,19 +578,19 @@ class ImageService
         $info = getimagesize( $path );
 
         if ( false === $info ) {
-            throw new RuntimeException( "Unable to read image metadata: {$path}");
+            throw new RuntimeException( "Unable to read image metadata: {$path}" );
         }
 
-        $image = match ( $info[2]) {
-            IMAGETYPE_JPEG => imagecreatefromjpeg( $path),
-            IMAGETYPE_PNG  => imagecreatefrompng( $path),
-            IMAGETYPE_GIF  => imagecreatefromgif( $path),
-            IMAGETYPE_BMP  => imagecreatefrombmp( $path),
-            IMAGETYPE_WEBP => imagecreatefromwebp( $path),
+        $image = match ( $info[2] ) {
+            IMAGETYPE_JPEG => imagecreatefromjpeg( $path ),
+            IMAGETYPE_PNG  => imagecreatefrompng( $path ),
+            IMAGETYPE_GIF  => imagecreatefromgif( $path ),
+            IMAGETYPE_BMP  => imagecreatefrombmp( $path ),
+            IMAGETYPE_WEBP => imagecreatefromwebp( $path ),
             default        => false,
         };
 
-        if ( false === $image) {
+        if ( false === $image ) {
             throw new RuntimeException( "Unsupported image type for GD: {$path}");
         }
 

@@ -140,9 +140,9 @@ class GenerateCriticalCssCommand extends Command
         // Application code may also register at runtime via service providers;
         // pull from the extractor itself when it exposes the routes.
         if ( method_exists( $extractor, 'registeredRoutes' ) ) {
-            $routes = array_merge( $routes, $extractor->registeredRoutes());
+            $routes = array_merge( $routes, $extractor->registeredRoutes() );
         }
 
-        return array_values( array_unique( array_map( 'strval', $routes)));
+        return array_values( array_unique( array_map( 'strval', $routes ) ) );
     }
 }

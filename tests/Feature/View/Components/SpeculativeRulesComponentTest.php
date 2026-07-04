@@ -142,4 +142,4 @@ it( 'overrides via the directive argument syntax', function (): void {
     );
 
     expect( $html )->toContain( '"eagerness":"immediate"' );
-});
+} );

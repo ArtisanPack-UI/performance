@@ -243,6 +243,6 @@ class ScriptManager
      */
     protected function resolveStrategy( string $name ): ?ScriptStrategy
     {
-        return $this->strategies[ strtolower( $name) ] ?? null;
+        return $this->strategies[ strtolower( $name ) ] ?? null;
     }
 }

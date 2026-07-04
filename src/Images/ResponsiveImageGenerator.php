@@ -291,9 +291,9 @@ class ResponsiveImageGenerator
      *
      * @throws RuntimeException When the source path is unreadable.
      */
-    protected function guardReadable( string $path): void
+    protected function guardReadable( string $path ): void
     {
-        if ( ! is_file( $path) || ! is_readable( $path)) {
+        if ( ! is_file( $path ) || ! is_readable( $path ) ) {
             throw new RuntimeException( "Source image is not readable: {$path}");
         }
     }

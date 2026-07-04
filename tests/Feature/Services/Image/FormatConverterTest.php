@@ -144,15 +144,15 @@ it( 'reads the driver from config on every call so runtime swaps take effect', f
 it( 'pins the driver when constructed with an explicit override', function (): void {
     $converter = new FormatConverter( 'imagick' );
 
-    config( ['artisanpack.performance.images.driver' => 'gd']);
+    config( ['artisanpack.performance.images.driver' => 'gd'] );
 
-    expect( $converter->driver())->toBe( 'imagick');
-});
+    expect( $converter->driver() )->toBe( 'imagick' );
+} );
 
 it( 'reports usesImagick only when the driver is imagick and the extension is loaded', function (): void {
-    $gd      = new FormatConverter( 'gd');
-    $imagick = new FormatConverter( 'imagick');
+    $gd      = new FormatConverter( 'gd' );
+    $imagick = new FormatConverter( 'imagick' );
 
-    expect( $gd->usesImagick())->toBeFalse()
-        ->and( $imagick->usesImagick())->toBe( class_exists( Imagick::class));
-});
+    expect( $gd->usesImagick() )->toBeFalse()
+        ->and( $imagick->usesImagick() )->toBe( class_exists( Imagick::class ) );
+} );

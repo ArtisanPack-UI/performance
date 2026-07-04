@@ -34,5 +34,5 @@ it( 'returns true when any pattern matches the URL', function (): void {
 
     expect( UrlPatternMatcher::matchesAny( '/admin/users', $patterns ) )->toBeTrue()
         ->and( UrlPatternMatcher::matchesAny( '/file.pdf', $patterns ) )->toBeTrue()
-        ->and( UrlPatternMatcher::matchesAny( '/products/1', $patterns))->toBeFalse();
-});
+        ->and( UrlPatternMatcher::matchesAny( '/products/1', $patterns ) )->toBeFalse();
+} );

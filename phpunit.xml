@@ -8,12 +8,16 @@
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
+        <testsuite name="Benchmarks">
+            <directory suffix="Benchmark.php">tests/Benchmarks</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
-            <directory>app</directory>
+            <directory>src</directory>
         </include>
     </source>
+    <coverage includeUncoveredFiles="true"/>
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>

@@ -44,5 +44,5 @@ it( 'produces no output for an empty URL list', function (): void {
         ['urls' => []],
     );
 
-    expect( trim( $html))->toBe( '');
-});
+    expect( trim( $html ) )->toBe( '' );
+} );

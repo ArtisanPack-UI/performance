@@ -216,16 +216,16 @@ it( 'does not classify attribute substring selectors as critical via the univers
 .footer { display: none; }
 CSS;
 
-    $result = (new CriticalCssExtractor)->extract( $css);
+    $result = (new CriticalCssExtractor)->extract( $css );
 
-    expect( $result)->not->toContain( 'data-name')
-        ->and( $result)->not->toContain( '.footer');
-});
+    expect( $result )->not->toContain( 'data-name' )
+        ->and( $result )->not->toContain( '.footer' );
+} );
 
 it( 'lists registered routes', function (): void {
     $extractor = new CriticalCssExtractor;
-    $extractor->registerSource( 'home', 'body{}');
-    $extractor->registerSource( 'contact', 'header{}');
+    $extractor->registerSource( 'home', 'body{}' );
+    $extractor->registerSource( 'contact', 'header{}' );
 
-    expect( $extractor->registeredRoutes())->toEqualCanonicalizing( ['home', 'contact']);
-});
+    expect( $extractor->registeredRoutes() )->toEqualCanonicalizing( ['home', 'contact'] );
+} );

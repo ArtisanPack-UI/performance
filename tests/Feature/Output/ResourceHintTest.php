@@ -124,11 +124,11 @@ it( 'lets a verbose entry override the default rel', function (): void {
     $hint = ResourceHint::fromConfigEntry( 'preconnect', [
         'rel'  => 'dns-prefetch',
         'href' => 'https://example.test',
-    ]);
+    ] );
 
-    expect( $hint->rel)->toBe( 'dns-prefetch');
-});
+    expect( $hint->rel )->toBe( 'dns-prefetch' );
+} );
 
 it( 'returns null when a config entry is missing href', function (): void {
-    expect( ResourceHint::fromConfigEntry( 'preconnect', ['rel' => 'preconnect']))->toBeNull();
-});
+    expect( ResourceHint::fromConfigEntry( 'preconnect', ['rel' => 'preconnect'] ) )->toBeNull();
+} );

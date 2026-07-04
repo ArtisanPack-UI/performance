@@ -75,5 +75,5 @@ it( 'dispatches PerformanceThresholdExceeded with metric value vs threshold', fu
         return 'LCP' === $event->metric
             && 4500.0 === $event->value
             && 4000.0 === $event->threshold;
-    });
+    } );
 });

@@ -782,17 +782,17 @@ class CriticalCssExtractor
      */
     protected function cacheRepository(): ?Repository
     {
-        if ( null !== $this->cache) {
+        if ( null !== $this->cache ) {
             return $this->cache;
         }
 
-        if ( ! function_exists( 'cache')) {
+        if ( ! function_exists( 'cache' ) ) {
             return null;
         }
 
         try {
             return cache()->store();
-        } catch ( Throwable) {
+        } catch ( Throwable ) {
             return null;
         }
     }
@@ -804,7 +804,7 @@ class CriticalCssExtractor
      *
      * @param  string  $value  Caller-supplied value.
      */
-    protected function escape( string $value): string
+    protected function escape( string $value ): string
     {
         return htmlspecialchars( $value, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8');
     }

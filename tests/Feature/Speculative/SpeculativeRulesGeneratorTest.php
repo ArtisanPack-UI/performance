@@ -146,9 +146,9 @@ it( 'uses an explicit selector when provided', function (): void {
             'eagerness' => 'moderate',
             'selector'  => 'a.fast-link',
         ],
-    ]);
+    ] );
 
-    $decoded = json_decode( $json, true);
+    $decoded = json_decode( $json, true );
 
-    expect( $decoded['prefetch'][0]['where']['selector_matches'])->toBe( 'a.fast-link');
-});
+    expect( $decoded['prefetch'][0]['where']['selector_matches'] )->toBe( 'a.fast-link' );
+} );

@@ -52,4 +52,4 @@ it( 'exposes a runtime inject() entry point on window', function (): void {
 
     expect( $body )->toContain( 'window.PerformanceSpeculativeLoader' )
         ->and( $body )->toContain( 'inject(' );
-});
+} );

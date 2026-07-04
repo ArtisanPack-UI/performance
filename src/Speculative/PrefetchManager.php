@@ -205,7 +205,7 @@ class PrefetchManager
     {
         $normalized = strtolower( trim( $priority ) );
 
-        return isset( self::PRIORITY_WEIGHTS[ $normalized ])
+        return isset( self::PRIORITY_WEIGHTS[ $normalized ] )
             ? $normalized
             : self::DEFAULT_PRIORITY;
     }

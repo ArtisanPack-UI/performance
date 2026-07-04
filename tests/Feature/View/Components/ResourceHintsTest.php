@@ -89,8 +89,8 @@ it( 'filters by the only attribute', function (): void {
 } );
 
 it( 'renders nothing when no hints resolve', function (): void {
-    $html = Blade::render( '<x-perf-resource-hints />');
+    $html = Blade::render( '<x-perf-resource-hints />' );
 
     // Empty body except for the surrounding component shell whitespace.
-    expect( trim( $html))->toBe( '');
-});
+    expect( trim( $html ) )->toBe( '' );
+} );

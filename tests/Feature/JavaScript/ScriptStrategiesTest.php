@@ -94,11 +94,11 @@ it( 'allows additional attributes attached via the escape hatch', function (): v
 } );
 
 it( 'drops attribute names with disallowed characters', function (): void {
-    $script = (new ScriptRegistration( '/js/x.js'))
+    $script = (new ScriptRegistration( '/js/x.js' ))
         ->defer()
-        ->attribute( '"><script', 'x');
+        ->attribute( '"><script', 'x' );
 
-    $html = (new DeferStrategy)->render( $script);
+    $html = (new DeferStrategy)->render( $script );
 
-    expect( $html)->not->toContain( '"><script');
-});
+    expect( $html )->not->toContain( '"><script' );
+} );

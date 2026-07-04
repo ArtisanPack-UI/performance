@@ -41,6 +41,6 @@ it( 'renders facade-registered conditional scripts through the bundled strategy'
     $html = Performance::renderScripts();
 
     expect( $html )->toContain( 'type="' . ConditionalStrategy::PARKED_TYPE . '"' )
-        ->and( $html)->toContain( 'data-load-on="idle"')
-        ->and( $html)->toContain( 'data-src="/js/heavy.js"');
-});
+        ->and( $html )->toContain( 'data-load-on="idle"' )
+        ->and( $html )->toContain( 'data-src="/js/heavy.js"' );
+} );

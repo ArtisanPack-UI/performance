@@ -109,6 +109,6 @@ abstract class AbstractScriptStrategy implements ScriptStrategy
      */
     protected function isSafeAttributeName( string $name ): bool
     {
-        return 1 === preg_match( '/^[A-Za-z_][A-Za-z0-9_-]*$/', $name);
+        return 1 === preg_match( '/^[A-Za-z_][A-Za-z0-9_-]*$/', $name );
     }
 }

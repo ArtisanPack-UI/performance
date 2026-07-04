@@ -150,7 +150,7 @@ final class ScriptDirectives
         $registration = new ScriptRegistration( $src );
 
         foreach ( $attributes as $name => $value ) {
-            $registration->attribute( (string) $name, (string) $value);
+            $registration->attribute( (string) $name, (string) $value );
         }
 
         return $registration;

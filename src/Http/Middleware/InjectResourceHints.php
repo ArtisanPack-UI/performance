@@ -383,10 +383,10 @@ class InjectResourceHints
      *
      * @param  string  $body  Response body.
      */
-    protected function findHeadCloseTag( string $body): int|false
+    protected function findHeadCloseTag( string $body ): int|false
     {
-        $bodyTag = stripos( $body, '<body');
-        $search  = false === $bodyTag ? $body : substr( $body, 0, $bodyTag);
+        $bodyTag = stripos( $body, '<body' );
+        $search  = false === $bodyTag ? $body : substr( $body, 0, $bodyTag );
 
         // strripos finds the RIGHTMOST occurrence — the actual </head>
         // close tag will always sit closer to <body than any literal

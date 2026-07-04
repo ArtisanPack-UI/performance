@@ -163,14 +163,14 @@ it( 'has every documented perf helper available', function (): void {
         'perfGetRecommendations',
     ];
 
-    foreach ( $expected as $function) {
-        expect( function_exists( $function))->toBeTrue( "Expected helper {$function} to exist");
+    foreach ( $expected as $function ) {
+        expect( function_exists( $function ) )->toBeTrue( "Expected helper {$function} to exist" );
     }
-});
+} );
 
 it( 'resolves perfOptimizeImage and the facade to the same ImageService instance', function (): void {
     // Regression: helpers must route through the container so swapping ImageService
     // in tests (or in app code) takes effect for all helper calls.
-    expect( performance()->images())->toBeInstanceOf( ImageService::class)
-        ->and( performance()->images())->toBe( app( ImageService::class));
-});
+    expect( performance()->images() )->toBeInstanceOf( ImageService::class )
+        ->and( performance()->images() )->toBe( app( ImageService::class ) );
+} );
