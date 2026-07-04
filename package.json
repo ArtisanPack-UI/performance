@@ -10,7 +10,9 @@
 	"type": "module",
 	"sideEffects": [
 		"./resources/js/performance.ts",
-		"./resources/js/web-vitals.js"
+		"./resources/js/web-vitals.js",
+		"./resources/js/metrics-chart.js",
+		"./resources/js/speculative-rules.js"
 	],
 	"exports": {
 		".": {

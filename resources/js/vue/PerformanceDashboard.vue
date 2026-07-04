@@ -54,6 +54,17 @@ function navigate( target: string ): void {
 		tab.value = target as PerformanceDashboardTab;
 	}
 }
+
+// Only forward the client options children accept; dashboard-only props
+// (initialTab, tabs, className, cardClassName) would fall through as
+// unknown HTML attributes otherwise, and the reactive `range` binding
+// would be silently shadowed if `v-bind="props"` came after it.
+const clientOptions = computed( () => ( {
+	baseUrl: props.baseUrl,
+	csrfToken: props.csrfToken,
+	fetch: props.fetch,
+	client: props.client,
+} ) );
 </script>
 
 <template>
@@ -132,16 +143,16 @@ function navigate( target: string ): void {
 			</section>
 
 			<section v-if="'cache' === tab" :class="cardClass">
-				<MetricsChart :metrics="[ 'LCP' ]" v-bind="props" />
-				<CacheManager v-bind="props" />
+				<MetricsChart v-bind="clientOptions" :metrics="[ 'LCP' ]" :initial-range="range" />
+				<CacheManager v-bind="clientOptions" />
 			</section>
 
 			<section v-if="'queries' === tab" :class="cardClass">
-				<QueryAnalyzer :initial-range="range" v-bind="props" />
+				<QueryAnalyzer v-bind="clientOptions" :initial-range="range" />
 			</section>
 
 			<section v-if="'recommendations' === tab" :class="cardClass">
-				<RecommendationsPanel :initial-range="range" v-bind="props" @navigate="navigate" />
+				<RecommendationsPanel v-bind="clientOptions" :initial-range="range" @navigate="navigate" />
 			</section>
 		</div>
 	</div>

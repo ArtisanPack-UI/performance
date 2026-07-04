@@ -260,7 +260,13 @@ export class PerformanceClient {
 		return this.get<QueriesPayload>( `/admin/queries${ query }` );
 	}
 
-	async exportQueriesCsvUrl( options: QueriesQuery = {} ): Promise<string> {
+	/**
+	 * Synchronous URL builder. Intentionally NOT async so Safari's
+	 * popup blocker recognises the immediate `window.open(client.exportQueriesCsvUrl(...))`
+	 * call as gesture-originated. An intervening `await` would defer
+	 * `window.open` to a microtask and the tab would be suppressed.
+	 */
+	exportQueriesCsvUrl( options: QueriesQuery = {} ): string {
 		return `${ this.baseUrl }/admin/queries/export${ buildQueryString( {
 			range: options.range,
 			route: options.route,

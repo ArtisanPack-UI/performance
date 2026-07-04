@@ -77,12 +77,17 @@ export function PerfEmbed( props: PerfEmbedProps ): JSX.Element | null {
 	);
 
 	if ( null === facade ) {
-		return (
-			<>
-				{ /* mirrors the Blade `<!-- perf-embed: {reason} -->` no-op */ }
-				{ '' !== ( error ?? '' ) ? null : null }
-			</>
-		);
+		// Mirrors the Blade `<!-- perf-embed: {reason} -->` no-op. When
+		// an error was passed, surface it inline so a mis-wired feed is
+		// visible in development instead of silently rendering nothing.
+		if ( error ) {
+			return (
+				<div className={ containerClass } role="status" aria-label="Embed unavailable">
+					{ error }
+				</div>
+			);
+		}
+		return null;
 	}
 
 	const eager = ! lazy;

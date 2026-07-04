@@ -9,7 +9,8 @@
  * @since 1.0.0
  */
 
-import { useMemo, useState, type JSX } from 'react';
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { renderPerfChart } from '../metrics-chart.js';
 import type { ChartPayload, ChartRangeKey } from '../performance';
 import { useAsyncPayload, usePerformance, type UsePerformanceOptions } from './usePerformance';
 
@@ -44,12 +45,34 @@ export function MetricsChart( props: MetricsChartProps ): JSX.Element {
 	const { loadChart } = usePerformance( hookOptions );
 	const [ range, setRange ] = useState<ChartRangeKey>( initialRange );
 
-	const { data, loading, error } = useAsyncPayload<ChartPayload, [ ChartRangeKey ]>(
+	// Keep local `range` in sync when the parent updates `initialRange`
+	// (dashboard-level range picker). Without this, once the child
+	// mounts the initial range snapshot is frozen.
+	useEffect( () => {
+		setRange( initialRange );
+	}, [ initialRange ] );
+
+	// Stable string key for the metrics list so the loader dep tuple
+	// doesn't churn on every render from a fresh array literal.
+	const metricsKey = metrics.join( ',' );
+
+	const { data, loading, error } = useAsyncPayload<ChartPayload, [ ChartRangeKey, string, boolean, string ]>(
 		() => loadChart( { metrics, range, showThreshold, type: initialType } ),
-		[ range ],
+		[ range, metricsKey, showThreshold, initialType ],
 	);
 
 	const payloadJson = useMemo( () => ( data ? JSON.stringify( data ) : '' ), [ data ] );
+	const canvasContainerRef = useRef<HTMLDivElement | null>( null );
+
+	// Trigger the Chart.js bootstrap whenever the payload changes.
+	// `metrics-chart.js` auto-boots on DOMContentLoaded, which is before
+	// React mounts the component; without this hook the canvas is never
+	// wired and only the fallback data table renders.
+	useEffect( () => {
+		if ( null !== canvasContainerRef.current && '' !== payloadJson ) {
+			renderPerfChart( canvasContainerRef.current );
+		}
+	}, [ payloadJson ] );
 
 	return (
 		<div className={ [ 'performance-metrics-chart', className ].filter( Boolean ).join( ' ' ) } data-testid="performance-metrics-chart">
@@ -71,7 +94,7 @@ export function MetricsChart( props: MetricsChartProps ): JSX.Element {
 
 			{ data && (
 				<>
-					<div className="performance-metrics-chart__canvas" data-metrics-chart data-chart-payload={ payloadJson }>
+					<div ref={ canvasContainerRef } className="performance-metrics-chart__canvas" data-metrics-chart data-chart-payload={ payloadJson }>
 						<canvas />
 					</div>
 					<details>

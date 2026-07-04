@@ -4,7 +4,7 @@
  * @since 1.0.0
  */
 
-import { useCallback, useState, type JSX } from 'react';
+import { useCallback, useEffect, useState, type JSX } from 'react';
 import type { DateRangeKey, Recommendation, RecommendationsPayload } from '../performance';
 import { useAsyncPayload, usePerformance, type UsePerformanceOptions } from './usePerformance';
 
@@ -25,9 +25,14 @@ export function RecommendationsPanel( props: RecommendationsPanelProps ): JSX.El
 	} = props;
 
 	const { runRecommendationAction, loadRecommendations } = usePerformance( hookOptions );
-	const [ range ] = useState<DateRangeKey>( initialRange );
+	const [ range, setRange ] = useState<DateRangeKey>( initialRange );
 	const [ status, setStatus ] = useState<{ message: string; isError: boolean } | null>( null );
 	const [ working, setWorking ] = useState( false );
+
+	// Sync local range with the parent dashboard's range picker.
+	useEffect( () => {
+		setRange( initialRange );
+	}, [ initialRange ] );
 
 	const { data, loading, error, reload } = useAsyncPayload<RecommendationsPayload, [ DateRangeKey ]>(
 		() => loadRecommendations( range ),
@@ -36,22 +41,25 @@ export function RecommendationsPanel( props: RecommendationsPanelProps ): JSX.El
 
 	const runAction = useCallback(
 		async ( action: 'apply' | 'dismiss' | 'reset', payload: { id?: string } = {} ) => {
+			// Capture the recommendation BEFORE the network call so a
+			// racing reload can't drop the navigation/migration callback.
+			const recommendation = 'apply' === action && payload.id
+				? data?.items.find( ( item ) => item.id === payload.id )
+				: undefined;
+
 			setWorking( true );
 			try {
 				const result = await runRecommendationAction( action, payload );
 				setStatus( { message: result.message, isError: result.is_error } );
-				if ( 'apply' === action && payload.id ) {
-					const recommendation = data?.items.find( ( item ) => item.id === payload.id );
-					if ( recommendation ) {
-						if ( 'generate-index-migration' === recommendation.action ) {
-							const p = recommendation.action_payload ?? {};
-							onGenerateIndexMigration?.( {
-								table: String( p.table ?? '' ),
-								columns: Array.isArray( p.columns ) ? ( p.columns as string[] ) : [],
-							} );
-						} else if ( 'view-query-analyzer' === recommendation.action ) {
-							onNavigate?.( 'queries' );
-						}
+				if ( recommendation ) {
+					if ( 'generate-index-migration' === recommendation.action ) {
+						const p = recommendation.action_payload ?? {};
+						onGenerateIndexMigration?.( {
+							table: String( p.table ?? '' ),
+							columns: Array.isArray( p.columns ) ? ( p.columns as string[] ) : [],
+						} );
+					} else if ( 'view-query-analyzer' === recommendation.action ) {
+						onNavigate?.( 'queries' );
 					}
 				}
 				await reload();

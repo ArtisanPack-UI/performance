@@ -5,7 +5,7 @@
  * @since 1.0.0
  */
 
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { DateRangeKey, QuerySortKey } from '../performance';
 import { useAsyncPayload, usePerformance, type UsePerformanceOptions } from './usePerformance';
 
@@ -33,6 +33,12 @@ const minTimeMs = ref<number>( props.initialMinTimeMs );
 const sort = ref<QuerySortKey>( props.initialSort );
 const expanded = ref<string | null>( null );
 
+// Sync local range with parent updates so the dashboard toolbar's range
+// picker drives the query panel too.
+watch( () => props.initialRange, ( next ) => {
+	range.value = next;
+} );
+
 const { data, loading, error, reload } = useAsyncPayload(
 	() => loadQueries( {
 		range: range.value,
@@ -43,8 +49,11 @@ const { data, loading, error, reload } = useAsyncPayload(
 	[ range, route, minTimeMs, sort ],
 );
 
-async function exportCsv(): Promise<void> {
-	const url = await client.exportQueriesCsvUrl( {
+function exportCsv(): void {
+	// Sync call so Safari's popup blocker sees a gesture-originated
+	// `window.open` (an intervening `await` would defer to a microtask
+	// and the tab would be suppressed).
+	const url = client.exportQueriesCsvUrl( {
 		range: range.value,
 		route: '' === route.value ? undefined : route.value,
 		min_time_ms: minTimeMs.value,

@@ -167,20 +167,20 @@ export function PerformanceDashboard( props: PerformanceDashboardProps ): JSX.El
 
 				{ 'cache' === tab && (
 					<section className={ cardClass }>
-						<MetricsChart metrics={ [ 'LCP' ] } { ...hookOptions } />
+						<MetricsChart { ...hookOptions } metrics={ [ 'LCP' ] } initialRange={ range } />
 						<CacheManager { ...hookOptions } />
 					</section>
 				) }
 
 				{ 'queries' === tab && (
 					<section className={ cardClass }>
-						<QueryAnalyzer initialRange={ range } { ...hookOptions } />
+						<QueryAnalyzer { ...hookOptions } initialRange={ range } />
 					</section>
 				) }
 
 				{ 'recommendations' === tab && (
 					<section className={ cardClass }>
-						<RecommendationsPanel initialRange={ range } onNavigate={ navigate } { ...hookOptions } />
+						<RecommendationsPanel { ...hookOptions } initialRange={ range } onNavigate={ navigate } />
 					</section>
 				) }
 			</div>

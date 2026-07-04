@@ -81,22 +81,26 @@ export function useAsyncPayload<T>(
 	const data = ref<T | null>( null ) as Ref<T | null>;
 	const loading = ref<boolean>( true );
 	const error = ref<Error | null>( null );
-	let cancelled = false;
+	let unmounted = false;
+	// Monotonic request id so a late response from an earlier launch
+	// can't overwrite a fresh one (rapid range/route clicks).
+	let requestId = 0;
 
 	async function reload(): Promise<void> {
+		const localId = ++requestId;
 		loading.value = true;
 		error.value = null;
 		try {
 			const next = await loader();
-			if ( ! cancelled ) {
+			if ( ! unmounted && localId === requestId ) {
 				data.value = next;
 			}
 		} catch ( err: unknown ) {
-			if ( ! cancelled ) {
+			if ( ! unmounted && localId === requestId ) {
 				error.value = err instanceof Error ? err : new Error( String( err ) );
 			}
 		} finally {
-			if ( ! cancelled ) {
+			if ( ! unmounted && localId === requestId ) {
 				loading.value = false;
 			}
 		}
@@ -113,7 +117,7 @@ export function useAsyncPayload<T>(
 	}
 
 	onBeforeUnmount( () => {
-		cancelled = true;
+		unmounted = true;
 	} );
 
 	return { data, loading, error, reload };

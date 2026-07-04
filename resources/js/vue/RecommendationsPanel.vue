@@ -5,7 +5,7 @@
  * @since 1.0.0
  */
 
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { DateRangeKey } from '../performance';
 import { useAsyncPayload, usePerformance, type UsePerformanceOptions } from './usePerformance';
 
@@ -28,28 +28,34 @@ const range = ref<DateRangeKey>( props.initialRange );
 const status = ref<{ message: string; isError: boolean } | null>( null );
 const working = ref( false );
 
+// Sync local range with parent range picker.
+watch( () => props.initialRange, ( next ) => {
+	range.value = next;
+} );
+
 const { data, loading, error, reload } = useAsyncPayload(
 	() => loadRecommendations( range.value ),
 	[ range ],
 );
 
 async function runAction( action: 'apply' | 'dismiss' | 'reset', id?: string ): Promise<void> {
+	// Capture the recommendation BEFORE the network call so a racing
+	// reload can't drop the navigation/migration emit.
+	const rec = 'apply' === action && id ? data.value?.items.find( ( item ) => item.id === id ) : undefined;
+
 	working.value = true;
 	try {
 		const result = await runRecommendationAction( action, id ? { id } : {} );
 		status.value = { message: result.message, isError: result.is_error };
-		if ( 'apply' === action && id ) {
-			const rec = data.value?.items.find( ( item ) => item.id === id );
-			if ( rec ) {
-				if ( 'generate-index-migration' === rec.action ) {
-					const p = rec.action_payload ?? {};
-					emit( 'generate-index-migration', {
-						table: String( p.table ?? '' ),
-						columns: Array.isArray( p.columns ) ? ( p.columns as string[] ) : [],
-					} );
-				} else if ( 'view-query-analyzer' === rec.action ) {
-					emit( 'navigate', 'queries' );
-				}
+		if ( rec ) {
+			if ( 'generate-index-migration' === rec.action ) {
+				const p = rec.action_payload ?? {};
+				emit( 'generate-index-migration', {
+					table: String( p.table ?? '' ),
+					columns: Array.isArray( p.columns ) ? ( p.columns as string[] ) : [],
+				} );
+			} else if ( 'view-query-analyzer' === rec.action ) {
+				emit( 'navigate', 'queries' );
 			}
 		}
 		await reload();

@@ -4,7 +4,7 @@
  * @since 1.0.0
  */
 
-import { useCallback, useState, type JSX } from 'react';
+import { useCallback, useEffect, useState, type JSX } from 'react';
 import type { DateRangeKey, QueriesPayload, QuerySortKey } from '../performance';
 import { useAsyncPayload, usePerformance, type UsePerformanceOptions } from './usePerformance';
 
@@ -35,13 +35,20 @@ export function QueryAnalyzer( props: QueryAnalyzerProps ): JSX.Element {
 	const [ sort, setSort ] = useState<QuerySortKey>( initialSort );
 	const [ expanded, setExpanded ] = useState<string | null>( null );
 
+	// Sync local range with the parent dashboard's range picker.
+	useEffect( () => {
+		setRange( initialRange );
+	}, [ initialRange ] );
+
 	const { data, loading, error, reload } = useAsyncPayload<QueriesPayload, [ DateRangeKey, string, number, QuerySortKey ]>(
 		() => loadQueries( { range, route: '' === route ? undefined : route, min_time_ms: minTimeMs, sort } ),
 		[ range, route, minTimeMs, sort ],
 	);
 
-	const exportCsv = useCallback( async () => {
-		const url = await client.exportQueriesCsvUrl( {
+	const exportCsv = useCallback( (): void => {
+		// Called directly from the button click handler — no `await` so
+		// the popup blocker sees a gesture-originated `window.open`.
+		const url = client.exportQueriesCsvUrl( {
 			range,
 			route: '' === route ? undefined : route,
 			min_time_ms: minTimeMs,
@@ -80,7 +87,7 @@ export function QueryAnalyzer( props: QueryAnalyzerProps ): JSX.Element {
 					<button type="button" aria-pressed={ 'frequency' === sort } onClick={ () => setSort( 'frequency' ) }>Most frequent</button>
 				</div>
 				<button type="button" onClick={ () => void reload() }>Refresh</button>
-				<button type="button" onClick={ () => void exportCsv() }>Export CSV</button>
+				<button type="button" onClick={ exportCsv }>Export CSV</button>
 			</div>
 
 			{ error && <p role="alert">{ error.message }</p> }

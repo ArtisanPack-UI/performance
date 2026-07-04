@@ -9,6 +9,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+// Monotonic per-hook-instance request id used to drop late responses
+// whose issuing render is no longer current.
+type RequestId = number;
 import {
 	type CacheActionResult,
 	type CachePayload,
@@ -91,42 +95,43 @@ export function useAsyncPayload<T, Deps extends readonly unknown[]>(
 	const [ loading, setLoading ] = useState<boolean>( true );
 	const [ error, setError ] = useState<Error | null>( null );
 
-	const reload = useCallback( async (): Promise<void> => {
-		setLoading( true );
-		setError( null );
-		try {
-			const next = await loader();
-			setData( next );
-		} catch ( err: unknown ) {
-			setError( err instanceof Error ? err : new Error( String( err ) ) );
-		} finally {
-			setLoading( false );
-		}
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, deps );
+	// Every launch bumps this counter; late responses whose id is no
+	// longer the current one are discarded. Prevents rapid-click races
+	// where an older response arrives after a newer one.
+	const requestIdRef = useRef<RequestId>( 0 );
 
-	useEffect( () => {
-		let cancelled = false;
+	const runLoader = useCallback( ( sourceLoader: () => Promise<T> ): void => {
+		const requestId = ++requestIdRef.current;
 		setLoading( true );
 		setError( null );
-		loader()
+		sourceLoader()
 			.then( ( next ) => {
-				if ( ! cancelled ) {
+				if ( requestId === requestIdRef.current ) {
 					setData( next );
 				}
 			} )
 			.catch( ( err: unknown ) => {
-				if ( ! cancelled ) {
+				if ( requestId === requestIdRef.current ) {
 					setError( err instanceof Error ? err : new Error( String( err ) ) );
 				}
 			} )
 			.finally( () => {
-				if ( ! cancelled ) {
+				if ( requestId === requestIdRef.current ) {
 					setLoading( false );
 				}
 			} );
+	}, [] );
+
+	const reload = useCallback( async (): Promise<void> => {
+		runLoader( loader );
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, deps );
+
+	useEffect( () => {
+		runLoader( loader );
 		return () => {
-			cancelled = true;
+			// Invalidate any in-flight request tied to this render.
+			requestIdRef.current++;
 		};
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, deps );

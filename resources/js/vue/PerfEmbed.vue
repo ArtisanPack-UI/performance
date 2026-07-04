@@ -5,7 +5,7 @@
  * @since 1.0.0
  */
 
-import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 export type PerfEmbedProvider = 'youtube' | 'vimeo' | 'twitter' | 'x';
 export type PerfEmbedMode = 'iframe' | 'blockquote';
@@ -71,7 +71,8 @@ function onFacadeKey( event: KeyboardEvent ): void {
 // templates as side-effect elements. Inject it programmatically into
 // the blockquote wrapper once the eager mode swaps in, and remove it on
 // unmount so route changes don't stack duplicate scripts.
-const blockquoteRoot = useTemplateRef<HTMLDivElement>( 'blockquoteRoot' );
+// Plain template ref (works on Vue 3.4+; useTemplateRef requires 3.5+).
+const blockquoteRoot = ref<HTMLDivElement | null>( null );
 let widgetsScript: HTMLScriptElement | null = null;
 
 function removeWidgetsScript(): void {
@@ -105,7 +106,7 @@ function installWidgetsScript(): void {
 watch(
 	[ () => props.facade, showEager ],
 	() => {
-		void Promise.resolve().then( installWidgetsScript );
+		void nextTick( installWidgetsScript );
 	},
 	{ immediate: true },
 );
