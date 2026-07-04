@@ -2,7 +2,7 @@
 	"name": "@artisanpack-ui/performance",
 	"version": "1.0.0",
 	"description": "Client-side companion for artisanpack-ui/performance — vanilla JS metrics + cache client plus React and Vue components for the performance dashboard, image optimization, embeds, and speculative loading.",
-	"license": "GPL-3.0-or-later",
+	"license": "MIT",
 	"author": {
 		"name": "Jacob Martella",
 		"email": "me@jacobmartella.com"
