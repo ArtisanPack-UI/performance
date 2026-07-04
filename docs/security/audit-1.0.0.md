@@ -159,11 +159,26 @@ and trigger PHP object injection.
 **Resolution:** Added HMAC-based integrity verification. Cached
 payloads are now prefixed with `perf:v1:<sha256-hmac>:<serialize>`
 and verified with `hash_equals` on read; verification uses
-`config('app.key')` as the signing key. Tampered or unsigned entries
-fail verification, are dropped from the cache, and are transparently
-recomputed. Existing tests
-(`tests/Feature/Traits/CachesQueriesTest.php`) still pass because the
-sign/verify round trip is self-consistent.
+`config('app.key')` as the signing key, and the cache key is folded
+into the HMAC input (`hmac(key . "\0" . serialized, appKey)`) so a
+signed entry cannot be relocated across keys on a shared backend.
+`cacheSigningKey()` throws when `app.key` is empty rather than
+falling back to a public constant — a fallback key defeats the
+signing gate entirely for any misconfigured deployment. Tampered or
+unsigned entries fail verification, are dropped from the cache, and
+are transparently recomputed.
+
+**Scope note:** the fix protects the *query cache read path only*
+(`CachingEloquentBuilder::withQueryCache`). It does **not** close the
+broader PHP object-injection surface introduced by Laravel's own
+cache backends: file, database, and redis-serialize stores all
+`serialize()` on `Cache::put(...)` and `unserialize()` on
+`Cache::get(...)`, so an attacker with cache-write access can craft a
+payload that hits `unserialize()` inside the framework before this
+package's verifier runs. The HMAC prevents *forged CachingEloquentBuilder
+payloads* from surviving verification; it does not prevent object
+instantiation during Laravel's own read step. See the follow-up
+recommendation below for the full close.
 
 ### Recommendation — Defensive gate check on destructive Livewire actions
 
@@ -185,23 +200,33 @@ the check fails. Deferring this to a 1.0.x point release keeps the
 1.0 test surface stable and gives host applications time to opt in
 to the gate name they want to use.
 
-### Recommendation — Opt-in encryption for cache payloads
+### Recommendation — Encryption on cache payloads to close the framework unserialize surface
 
-**Location:** `src/Database/CachingEloquentBuilder.php`
-(query-cache write path).
+**Location:**
+`src/Database/CachingEloquentBuilder.php`,
+`src/Cache/PageCacheManager.php`,
+`src/Cache/FragmentCache.php`.
 
-**Description:** With HMAC verification in place, tampered payloads
-are rejected. Payloads themselves are still stored in plaintext.
-Applications that cache PII-adjacent query results in a shared
-backend may want the added layer of `Crypt::encryptString()` around
-the serialized payload.
+**Description:** All three cache paths hand structured PHP values to
+Laravel's Cache API, which round-trips them through `serialize()` and
+`unserialize()`. Under the standard threat model (dedicated cache,
+single tenant) this is fine — the package reads back what it wrote.
+Under a compromised or shared cache backend the framework-level
+`unserialize()` is the object-injection surface, and it runs *before*
+this package's HMAC verifier gets the payload. Signing after the fact
+proves who wrote the bytes but does not prevent object instantiation
+during the read.
 
-**Proposed follow-up:** Add a
-`artisanpack.performance.query_cache.encrypt` flag (default
-`false`). When true, `signCachedPayload` calls `Crypt::encryptString`
-and `verifyCachedPayload` calls `Crypt::decryptString`. Encrypted
-entries carry a different prefix so mixed environments migrate
-transparently.
+**Proposed follow-up:** Wrap `Cache::put(...)` / `Cache::get(...)` at
+each of the three paths with `Crypt::encryptString` /
+`Crypt::decryptString`. Laravel's `Crypt` verifies the wrapped MAC
+before it decrypts, so a tampered payload never reaches
+`unserialize()`. Gate behind a
+`artisanpack.performance.cache.encrypt` flag (default `false`) so
+existing deployments migrate on their own schedule; when true, all
+three paths encrypt on write and decrypt on read, and the entry
+prefix changes so legacy signed-only entries fall through the same
+verify-fails-drop-recompute path.
 
 ### Recommendation — Rate-limit the raw metric write path more aggressively
 

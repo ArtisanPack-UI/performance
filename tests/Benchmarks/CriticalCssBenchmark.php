@@ -5,10 +5,6 @@ declare( strict_types=1 );
 use ArtisanPackUI\Performance\Css\CriticalCssExtractor;
 use Tests\Benchmarks\BenchmarkReport;
 
-beforeEach( function (): void {
-    BenchmarkReport::skipIfNotEnabled( $this );
-} );
-
 it( 'measures critical CSS extraction throughput', function (): void {
     // Build a chunky CSS blob covering the common patterns the
     // extractor tokenizes: at-rules, nested media queries, keyframes,

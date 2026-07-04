@@ -6,8 +6,6 @@ use Illuminate\Support\Facades\Cache;
 use Tests\Benchmarks\BenchmarkReport;
 
 beforeEach( function (): void {
-    BenchmarkReport::skipIfNotEnabled( $this );
-
     config( [ 'cache.default' => 'array' ] );
     Cache::store( 'array' )->flush();
 } );

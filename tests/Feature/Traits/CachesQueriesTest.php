@@ -241,10 +241,13 @@ it( 'mixes SQL into the cache key even when a custom key is supplied', function 
 } );
 
 it( 'rejects a tampered cache payload and re-runs the query', function (): void {
-    // The signing check should catch any entry whose serialized body
-    // does not match the stored HMAC — a real attacker (or a rogue
-    // cache-tenant) is modeled by writing a raw serialize() blob
-    // that would deserialize to a non-Collection value.
+    // The signing check should catch any entry whose HMAC no longer
+    // verifies. We model a tampered payload — either the cache backend
+    // was compromised or an entry survived from a previous key
+    // generation — by rotating `config('app.key')` between the write and
+    // the read. The stored signature was computed against the pre-rotation
+    // key; the verifier recomputes with the post-rotation key, they don't
+    // match, the entry is forgotten, and the query re-executes.
     $count = 0;
     DB::listen( function () use ( &$count ): void { $count++; } );
 
@@ -252,26 +255,56 @@ it( 'rejects a tampered cache payload and re-runs the query', function (): void 
 
     expect( $count )->toBe( 1 );
 
-    $store       = Cache::store( 'file' )->getStore();
-    $reflection  = new ReflectionObject( $store );
-    $storageProp = $reflection->getProperty( 'storage' );
-    $storageProp->setAccessible( true );
-    $entries = $storageProp->getValue( $store );
+    // Second call should HIT (same key) — sanity check that the fixture
+    // is actually populated before we rotate the key.
+    CachesQueriesPostStub::query()->cacheFor( 60 )->get();
+    expect( $count )->toBe( 1 );
 
-    $key = collect( $entries )->keys()->first(
-        fn ( string $candidate ): bool => str_contains( $candidate, 'perf:query:' ),
-    );
-
-    expect( $key )->not->toBeNull();
-
-    // Overwrite the cached signed payload with unsigned tampered
-    // bytes. The verifier should reject it, forget the entry, and
-    // fall through to the query callback again.
-    Cache::store( 'file' )->put( $key, serialize( [ 'tampered' => true ] ), 60 );
+    // Rotate the app key. Any previously signed payload now fails
+    // verification against the new key.
+    config( [ 'app.key' => 'base64:' . base64_encode( random_bytes( 32 ) ) ] );
 
     $refreshed = CachesQueriesPostStub::query()->cacheFor( 60 )->get();
 
     expect( $refreshed )->toHaveCount( 3 );
     expect( $count )->toBe( 2 );
+} );
+
+it( 'refuses to sign when config("app.key") is missing', function (): void {
+    config( [ 'app.key' => '' ] );
+
+    expect( fn () => CachesQueriesPostStub::query()->cacheFor( 60 )->get() )
+        ->toThrow( RuntimeException::class, 'config("app.key")' );
+} );
+
+it( 'binds signatures to the cache key so they cannot be relocated', function (): void {
+    // Attacker-with-cache-write scenario: relocate a legitimately signed
+    // entry from key A to key B. verifyCachedPayload recomputes the HMAC
+    // with key B and mismatches. We drive the check directly against the
+    // sign/verify pair since instrumenting the cache backend around the
+    // builder's internal key derivation would require touching the same
+    // private state the previous reflection-based test relied on.
+    $builder = CachesQueriesPostStub::query();
+
+    // Reach the protected sign/verify pair via a one-shot anonymous
+    // subclass. This is a targeted test seam — no framework internals.
+    $probe = new class ( $builder->getQuery(), $builder->getModel() ) extends
+        ArtisanPackUI\Performance\Database\CachingEloquentBuilder {
+        public function sign( string $serialized, string $key ): string
+        {
+            return $this->signCachedPayload( $serialized, $key );
+        }
+
+        public function verify( string $payload, string $key ): ?string
+        {
+            return $this->verifyCachedPayload( $payload, $key );
+        }
+    };
+
+    $payload = serialize( [ 'legit' => 'value' ] );
+    $signed  = $probe->sign( $payload, 'perf:query:origin' );
+
+    expect( $probe->verify( $signed, 'perf:query:origin' ) )->toBe( $payload );
+    expect( $probe->verify( $signed, 'perf:query:relocated' ) )->toBeNull();
 } );
 

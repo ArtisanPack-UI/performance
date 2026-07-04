@@ -27,6 +27,7 @@ use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
+use RuntimeException;
 
 /**
  * Caching Eloquent builder class.
@@ -67,6 +68,18 @@ class CachingEloquentBuilder extends Builder
      * @var array<int, string>
      */
     protected array $cacheExtraTags = [];
+
+    /**
+     * Memoized signing key, populated on first call to `cacheSigningKey()`.
+     *
+     * Cached per-instance so a single request that touches N cached queries
+     * pays one config lookup instead of 2N (one per sign + one per verify).
+     * The value is stable for the process lifetime, so no invalidation is
+     * required.
+     *
+     * @since 1.0.0
+     */
+    protected ?string $cachedSigningKey = null;
 
     /**
      * Marks the pending query as cached for the given TTL.
@@ -273,7 +286,7 @@ class CachingEloquentBuilder extends Builder
         $hit    = $scoped->get( $key );
 
         if ( is_string( $hit ) ) {
-            $verified = $this->verifyCachedPayload( $hit );
+            $verified = $this->verifyCachedPayload( $hit, $key );
 
             if ( null !== $verified ) {
                 return unserialize( $verified, [ 'allowed_classes' => true ] );
@@ -288,26 +301,31 @@ class CachingEloquentBuilder extends Builder
 
         $value = $callback();
 
-        $scoped->put( $key, $this->signCachedPayload( serialize( $value ) ), $this->cacheTtl );
+        $scoped->put( $key, $this->signCachedPayload( serialize( $value ), $key ), $this->cacheTtl );
 
         return $value;
     }
 
     /**
-     * Signs a serialized payload with an HMAC over the application key.
+     * Signs a serialized payload with an HMAC over the application key and cache key.
      *
-     * The prefix isolates signed entries from any legacy plain-serialize
-     * payloads a previous version wrote — reading such an entry back
-     * fails the signature check and falls through to a fresh compute,
-     * which is the desired backfill behavior.
+     * The cache key is folded into the HMAC input so a signed entry cannot
+     * be moved from one query's key to another's on a shared or compromised
+     * cache backend — verification requires the same `$contextKey` on read.
+     *
+     * The `perf:v1:` prefix isolates signed entries from any legacy
+     * plain-serialize payloads a previous version wrote — reading such an
+     * entry back fails the signature check and falls through to a fresh
+     * compute, which is the desired backfill behavior.
      *
      * @since 1.0.0
      *
      * @param  string  $serialized  Raw `serialize()` output.
+     * @param  string  $contextKey  The cache key the payload will be stored under.
      */
-    protected function signCachedPayload( string $serialized ): string
+    protected function signCachedPayload( string $serialized, string $contextKey ): string
     {
-        $signature = hash_hmac( 'sha256', $serialized, $this->cacheSigningKey() );
+        $signature = hash_hmac( 'sha256', $contextKey . "\0" . $serialized, $this->cacheSigningKey() );
 
         return 'perf:v1:' . $signature . ':' . $serialized;
     }
@@ -324,8 +342,9 @@ class CachingEloquentBuilder extends Builder
      * @since 1.0.0
      *
      * @param  string  $payload  Payload read from the cache.
+     * @param  string  $contextKey  The cache key the payload was read from.
      */
-    protected function verifyCachedPayload( string $payload ): ?string
+    protected function verifyCachedPayload( string $payload, string $contextKey ): ?string
     {
         if ( ! str_starts_with( $payload, 'perf:v1:' ) ) {
             return null;
@@ -340,7 +359,7 @@ class CachingEloquentBuilder extends Builder
 
         $expected   = substr( $rest, 0, 64 );
         $serialized = substr( $rest, $separator + 1 );
-        $actual     = hash_hmac( 'sha256', $serialized, $this->cacheSigningKey() );
+        $actual     = hash_hmac( 'sha256', $contextKey . "\0" . $serialized, $this->cacheSigningKey() );
 
         return hash_equals( $expected, $actual ) ? $serialized : null;
     }
@@ -348,21 +367,33 @@ class CachingEloquentBuilder extends Builder
     /**
      * Returns the key used to sign cached payloads.
      *
-     * Prefers `app.key` (the framework-managed random key applications
-     * generate via `php artisan key:generate`) and falls back to a
-     * deterministic marker so the signing/verification round trip still
-     * works in the rare `key`-less test harness. Applications running
-     * without an app key are already outside the framework's supported
-     * configuration, so the fallback exists only to keep unit tests
-     * green rather than to protect anything meaningful.
+     * Reads `config('app.key')` once per builder instance and memoizes it —
+     * the value is stable for the lifetime of the process, so the per-hit
+     * config lookup is wasted work. Throws when the app key is missing
+     * because a signed cache with a public fallback key provides no
+     * protection at all: an attacker knowing the fallback string can forge
+     * valid signatures against any query key.
      *
      * @since 1.0.0
+     *
+     * @throws RuntimeException When `app.key` is not configured.
      */
     protected function cacheSigningKey(): string
     {
+        if ( null !== $this->cachedSigningKey ) {
+            return $this->cachedSigningKey;
+        }
+
         $key = (string) config( 'app.key', '' );
 
-        return '' !== $key ? $key : 'artisanpack-performance-unsigned';
+        if ( '' === $key ) {
+            throw new RuntimeException(
+                'artisanpack-ui/performance query cache requires config("app.key") to be set. '
+                . 'Run `php artisan key:generate` (or set APP_KEY in .env) before enabling `cacheFor()`.',
+            );
+        }
+
+        return $this->cachedSigningKey = $key;
     }
 
     /**

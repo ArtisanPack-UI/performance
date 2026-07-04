@@ -11,8 +11,6 @@ use Tests\Fixtures\CachesQueriesPostStub;
 uses( RefreshDatabase::class );
 
 beforeEach( function (): void {
-    BenchmarkReport::skipIfNotEnabled( $this );
-
     Schema::create( 'caches_queries_posts', function ( $table ): void {
         $table->increments( 'id' );
         $table->string( 'title' );

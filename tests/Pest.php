@@ -1,5 +1,6 @@
 <?php
 
+use Tests\Benchmarks\BenchmarkReport;
 use Tests\TestCase;
 
 /*
@@ -14,10 +15,23 @@ use Tests\TestCase;
 */
 
 pest()->extend( TestCase::class )
-    ->in( 'Feature' );
+    ->in( 'Feature', 'Benchmarks' );
 
-pest()->extend( TestCase::class )
-    ->in( 'Benchmarks' );
+/*
+|--------------------------------------------------------------------------
+| Benchmark Suite Gate
+|--------------------------------------------------------------------------
+|
+| The benchmark suite is opt-in — every file under `tests/Benchmarks/`
+| skips unless `PERF_RUN_BENCHMARKS=1` is set. Hoisting the gate here
+| means individual benchmark files no longer need a boilerplate
+| `beforeEach` block that could drift across files.
+|
+*/
+
+pest()->beforeEach( function (): void {
+    BenchmarkReport::skipIfNotEnabled( $this );
+} )->in( 'Benchmarks' );
 
 /*
 |--------------------------------------------------------------------------

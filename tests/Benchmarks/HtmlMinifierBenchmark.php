@@ -5,10 +5,6 @@ declare( strict_types=1 );
 use ArtisanPackUI\Performance\Output\HtmlMinifier;
 use Tests\Benchmarks\BenchmarkReport;
 
-beforeEach( function (): void {
-    BenchmarkReport::skipIfNotEnabled( $this );
-} );
-
 it( 'measures HTML minifier throughput on a typical page', function (): void {
     $html = str_repeat(
         <<<'HTML'

@@ -15,6 +15,22 @@ namespace Tests\Benchmarks;
  */
 final class BenchmarkReport
 {
+    /**
+     * Runs the callback N times and prints a one-line stats summary.
+     *
+     * The warmup pass is discarded so opcache priming and autoloader
+     * warmup do not skew the first-iteration timing. Returns the raw
+     * stats so a caller can assert on a soft ceiling (`expect(mean_ms)
+     * ->toBeLessThan(200.0)`) or diff outputs across runs.
+     *
+     * @since 1.0.0
+     *
+     * @param  string  $label  Human-readable label emitted on the report line.
+     * @param  int  $iterations  Number of measured iterations (warmup pass excluded).
+     * @param  callable  $callback  Zero-arg callable to time.
+     *
+     * @return array{label: string, iterations: int, mean_ms: float, median_ms: float, min_ms: float, max_ms: float, total_ms: float}
+     */
     public static function measure(
         string $label,
         int $iterations,
@@ -63,6 +79,19 @@ final class BenchmarkReport
         return $summary;
     }
 
+    /**
+     * Skips the current test unless `PERF_RUN_BENCHMARKS=1` is set.
+     *
+     * Invoked from the shared `beforeEach` hook in `tests/Pest.php` so
+     * benchmark files never accidentally run as part of the regular
+     * test-run pipeline. Individual files no longer need to call this
+     * themselves; call sites are kept for direct-use scenarios (running
+     * a single benchmark without the Pest suite wrapper).
+     *
+     * @since 1.0.0
+     *
+     * @param  object  $test  The current Pest / PHPUnit test instance (typically `$this`).
+     */
     public static function skipIfNotEnabled( object $test ): void
     {
         if ( '1' !== getenv( 'PERF_RUN_BENCHMARKS' ) ) {
