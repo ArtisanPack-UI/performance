@@ -40,9 +40,20 @@ export interface PerfEmbedProps {
 	onActivate?: ( facade: PerfEmbedFacade ) => void;
 }
 
-function PlayButton( { title }: { title: string } ): JSX.Element {
+function PlayButton( { title, onActivate }: { title: string; onActivate: () => void } ): JSX.Element {
 	return (
-		<button type="button" className="perf-embed-play" aria-label={ title }>
+		<button
+			type="button"
+			className="perf-embed-play"
+			aria-label={ title }
+			onClick={ ( event ) => {
+				// Handle here (not just via bubble to the parent div) so the
+				// component keeps working if a consumer swaps out the outer
+				// facade markup — the button's own click is the source of truth.
+				event.stopPropagation();
+				onActivate();
+			} }
+		>
 			<svg viewBox="0 0 24 24" width={ 48 } height={ 48 } aria-hidden="true" focusable="false">
 				<path d="M8 5v14l11-7z" fill="currentColor" />
 			</svg>
@@ -152,7 +163,7 @@ export function PerfEmbed( props: PerfEmbedProps ): JSX.Element | null {
 			) : (
 				<div className="perf-embed-thumbnail perf-embed-thumbnail--placeholder" aria-hidden="true" />
 			) }
-			<PlayButton title={ facade.title } />
+			<PlayButton title={ facade.title } onActivate={ activate } />
 		</div>
 	);
 }

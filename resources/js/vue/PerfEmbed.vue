@@ -173,7 +173,12 @@ onBeforeUnmount( removeWidgetsScript );
 				class="perf-embed-thumbnail perf-embed-thumbnail--placeholder"
 				aria-hidden="true"
 			/>
-			<button type="button" class="perf-embed-play" :aria-label="props.facade.title">
+			<button
+				type="button"
+				class="perf-embed-play"
+				:aria-label="props.facade.title"
+				@click.stop="activate"
+			>
 				<svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true" focusable="false">
 					<path d="M8 5v14l11-7z" fill="currentColor" />
 				</svg>
