@@ -18,6 +18,7 @@ Programmatic surface of the Performance package: services, models, events, helpe
 - [[api/traits]] — `HasOptimizedImages`, `HasOptimizedMedia`, `CachesQueries`
 - [[api/artisan]] — Every command shipped by the package
 - [[api/javascript]] — `@artisanpack-ui/performance` main entry plus `/web-vitals`, `/metrics-chart`, `/speculative-rules`, `/react`, `/vue` subpath exports
+- [[api/ai]] — `PerformanceInsightAgent`, `OptimizationSuggestionAgent`, `AiAgentApiController`, and the `performance.ai.use` Gate
 
 ## By Concern
 
@@ -34,6 +35,7 @@ Programmatic surface of the Performance package: services, models, events, helpe
 | Attach optimization metadata to a model | [[api/traits]] (`HasOptimizedImages`, `HasOptimizedMedia`) |
 | Emit critical CSS or resource hints in Blade | [[api/blade-directives]] |
 | Build a React or Vue dashboard surface | [[api/javascript]] |
+| Explain a slow query or triage aggregate metrics with AI | [[api/ai]] |
 
 ## Conventions
 

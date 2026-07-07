@@ -3,7 +3,7 @@
   "description": "Comprehensive performance optimization toolkit for Laravel applications: image optimization, JS/CSS strategies, resource hints, speculative loading, page and fragment caching, query analysis, and real-user performance monitoring.",
   "type": "library",
   "license": "MIT",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "autoload": {
     "psr-4": {
       "ArtisanPackUI\\Performance\\": "src/"
