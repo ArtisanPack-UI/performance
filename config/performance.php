@@ -386,6 +386,11 @@ return [
             \Illuminate\Session\Middleware\StartSession::class,
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
         ],
+        // Middleware for the AI JSON API endpoints under /ai/*. These
+        // dispatch to paid LLM providers, so the default gates them behind
+        // Sanctum + the `performance.ai.use` Gate. Hosts using a different
+        // guard (e.g. web-session) can override — the Gate check still runs.
+        'ai_middleware' => ['api', 'auth:sanctum'],
         'api_throttle' => env('PERF_API_THROTTLE', '60,1'),
     ],
 
