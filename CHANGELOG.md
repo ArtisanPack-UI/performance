@@ -8,6 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-07
+
+Adds two AI-powered features owned by the performance package, plus the Livewire, React, and Vue trigger surfaces that drive them.
+
+### Added
+
+#### AI features
+
+- `PerformanceInsightAgent` (`performance.query_insight`) — given a slow query plus its EXPLAIN plan and schema, explains the bottleneck and suggests indexes and rewrites. Suggests only; never emits DDL. Default model `claude-sonnet-4-6`; `$cacheable = false` because the output is a point-in-time diagnostic snapshot.
+- `OptimizationSuggestionAgent` (`performance.optimization_suggestion`) — reads aggregate metrics over a date range and returns ranked focus areas (impact / effort / rationale / actions), quick wins, and caveats. Short-circuits without a model call when the metrics list is empty. Default model `claude-sonnet-4-6`; `$cacheable = false`.
+- Both agents self-register via the service provider's `aiFeatures()` method, so `artisanpack-ui/ai` auto-discovers them.
+
+#### Trigger surfaces (Livewire, React, Vue)
+
+- `QueryInsightPanel` — Livewire component `perf-ai-query-insight-panel`, React `QueryInsightPanel`, Vue `QueryInsightPanel`. All three accept the query, EXPLAIN plan, schema hint (JSON or plain text), connection driver, and observed duration; render the returned diagnosis with bottlenecks, suggested indexes, rewrites, and caveats.
+- `OptimizationSuggestionPanel` — Livewire component `perf-ai-optimization-suggestion-panel`, React `OptimizationSuggestionPanel`, Vue `OptimizationSuggestionPanel`. The Livewire panel pulls aggregate rows out of `performance_metrics` directly with a bounded rolling window (`MAX_WINDOW_DAYS = 90`, `MAX_METRICS_ROWS = 2000`) so it works out of the box; the React and Vue panels accept a caller-supplied metrics batch and delegate to the client.
+- React and Vue components ship inside the performance package (not in `@artisanpack-ui/react` / `@artisanpack-ui/vue`) so both frameworks are supported without adding coupling to the shared UI packages.
+
+#### API surface
+
+- `POST /api/performance/ai/query-insight` and `POST /api/performance/ai/optimization-suggestion` dispatch to the two agents through `AiAgentApiController`. Responses are shaped as `{ data: <agent output>, feature_key: string }`. Disabled features return `409`, missing credentials `412`, agent validation errors `422`, unknown features `404`, gate denial `403`.
+- Dedicated `ai_middleware` config (default `['api', 'auth:sanctum']`) so AI endpoints do not share the anonymous stack used by the Web Vitals ingest.
+- Default `performance.ai.use` authorization Gate — permissive out of the box (any authenticated user), overridable in the host's `AuthServiceProvider` to enforce stricter policies or per-tenant quotas.
+
+#### Client (JavaScript)
+
+- `PerformanceClient.suggestQueryInsight(input)` and `PerformanceClient.suggestOptimization(input)` methods for driving the AI endpoints from vanilla JS, React, or Vue.
+- New `PerformanceAiError` class carries the HTTP status and feature key so callers can render disabled / misconfigured states without parsing exception messages.
+
+### Changed
+
+- `artisanpack-ui/ai: ^1.0` promoted from optional to a hard `require` in `composer.json`.
+- The service provider now registers a `performance.ai.use` Gate during `boot()` (guarded so a host-registered override wins).
+
 ## [1.0.0] - 2026-07-04
 
 Initial public release of the ArtisanPack UI Performance package. Every

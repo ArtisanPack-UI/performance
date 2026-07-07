@@ -58,12 +58,48 @@ installSpeculationRules({
 
 Same payload as `@speculativeRules` emits server-side; useful for SPA transitions that mutate the speculation set after the initial navigation.
 
+## AI features
+
+The `PerformanceClient` returned by `getPerformanceClient()` gains two AI methods in 1.1.0. Both accept a plain input object and return the shaped agent output.
+
+```ts
+import { getPerformanceClient, PerformanceAiError } from '@artisanpack-ui/performance'
+
+const client = getPerformanceClient({ baseUrl: '/api/performance' })
+
+try {
+    const insight = await client.suggestQueryInsight({
+        query: 'SELECT * FROM articles WHERE slug = ?',
+        explain: 'ALL, filesort',
+        time_ms: 210,
+    })
+
+    const suggestion = await client.suggestOptimization({
+        range: { from: '2026-07-01', to: '2026-07-07' },
+        metrics: metricsBatch,
+        context: { business_priority: 'checkout > blog' },
+    })
+} catch (error) {
+    if (error instanceof PerformanceAiError) {
+        console.warn(`AI feature ${error.featureKey} failed (${error.status}): ${error.message}`)
+    } else {
+        throw error
+    }
+}
+```
+
+`PerformanceAiError` extends `Error` with a `status` (HTTP status code) and `featureKey` (the feature key involved). Malformed 2xx bodies — empty responses, non-JSON payloads, or responses missing a `data` key — are converted into `PerformanceAiError`s too, so callers never see an uncaught `TypeError` from a downstream `.data` deref.
+
+See [[api/ai]] for the full input / output schemas and [[guides/ai-features]] for a walkthrough.
+
 ## React
 
 ```tsx
 import {
     PerformanceDashboard,
     MetricsChart,
+    QueryInsightPanel,
+    OptimizationSuggestionPanel,
     useWebVitals,
 } from '@artisanpack-ui/performance/react'
 
@@ -82,6 +118,8 @@ Dashboard components read from the same admin API endpoints (`/api/performance/a
 import {
     PerformanceDashboard,
     MetricsChart,
+    QueryInsightPanel,
+    OptimizationSuggestionPanel,
     useWebVitals,
 } from '@artisanpack-ui/performance/vue'
 
@@ -106,6 +144,8 @@ The React/Vue components wrap these endpoints — useful if you're building your
 | `GET /api/performance/admin/chart` | Time-series chart data for a metric |
 | `GET /api/performance/admin/queries` | Slow-query and N+1 rows |
 | `GET /api/performance/admin/cache` | Cache statistics |
+| `POST /api/performance/ai/query-insight` | Run the `performance.query_insight` agent |
+| `POST /api/performance/ai/optimization-suggestion` | Run the `performance.optimization_suggestion` agent |
 | `POST /api/performance/admin/cache` | Cache mutation actions (purge, warm) |
 | `GET /api/performance/admin/recommendations` | Ranked recommendations |
 

@@ -15,6 +15,7 @@ End-to-end walkthroughs for the major features of the Performance package. Each 
 - [[guides/monitoring-dashboard]] — Mount the RUM collector, aggregate metrics, mount the Livewire dashboard, act on recommendations
 - [[guides/speculative-loading]] — Register prefetch / prerender URLs, emit the Speculation Rules block, add resource hints and Early Hints
 - [[guides/media-library-integration]] — Auto-optimize uploads made through `artisanpack-ui/media-library` and read the optimization metadata back
+- [[guides/ai-features]] — Configure and use the `performance.query_insight` and `performance.optimization_suggestion` AI agents with Livewire, React, and Vue triggers
 
 ## When to Read What
 
@@ -27,5 +28,6 @@ End-to-end walkthroughs for the major features of the Performance package. Each 
 | Instrumenting Core Web Vitals for real users | [[guides/monitoring-dashboard]] |
 | Making next-page navigation instant | [[guides/speculative-loading]] |
 | Integrating with the media library | [[guides/media-library-integration]] |
+| Explaining a slow query or triaging a metrics regression with AI | [[guides/ai-features]] |
 
 For the underlying classes, methods, events, and helpers used by each guide, see the [[api]] reference.

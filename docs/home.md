@@ -17,6 +17,7 @@ The Performance package helps Laravel applications ship faster pages and better 
 - **Caching**: Full-page cache, fragment cache with tags, cache warming, wildcard invalidation
 - **Database Optimization**: N+1 detection, slow-query logging, query-cache trait, index suggestions
 - **Monitoring & Dashboard**: RUM Web Vitals collector, aggregation pipeline, Livewire dashboard, recommendations engine
+- **AI Features**: query-insight and portfolio-level optimization-suggestion agents with Livewire, React, and Vue triggers (new in 1.1.0)
 - **Media Library Integration**: automatic optimization for uploads through `artisanpack-ui/media-library`
 - **Artisan Tooling**: `perf:install`, `perf:generate-webp`, `perf:critical-css`, `perf:warm-cache`, `perf:purge-cache`, `perf:suggest-indexes`, `perf:aggregate-metrics`
 - **Event-Driven**: Every cache mutation, slow query, N+1, and threshold breach emits an event you can listen for
@@ -46,6 +47,7 @@ End-to-end walkthroughs for each major feature of the package.
 - [[guides/monitoring-dashboard]] — RUM collector, aggregation, dashboard, recommendations
 - [[guides/speculative-loading]] — Speculation Rules, prefetch, prerender, resource hints
 - [[guides/media-library-integration]] — Automatic optimization for `artisanpack-ui/media-library` uploads
+- [[guides/ai-features]] — `performance.query_insight` and `performance.optimization_suggestion` AI agents with Livewire, React, and Vue triggers
 
 ---
 

@@ -34,10 +34,18 @@ export type { QueryAnalyzerProps } from './QueryAnalyzer';
 export { RecommendationsPanel } from './RecommendationsPanel';
 export type { RecommendationsPanelProps } from './RecommendationsPanel';
 
+export { QueryInsightPanel } from './QueryInsightPanel';
+export type { QueryInsightPanelProps } from './QueryInsightPanel';
+
+export { OptimizationSuggestionPanel } from './OptimizationSuggestionPanel';
+export type { OptimizationSuggestionPanelProps } from './OptimizationSuggestionPanel';
+
 export { usePerformance } from './usePerformance';
 export type { UsePerformanceOptions, UsePerformanceResult } from './usePerformance';
 
 export type {
+	AiAgentResponse,
+	AiFeatureKey,
 	CacheActionResult,
 	CachePayload,
 	CacheSummary,
@@ -47,6 +55,11 @@ export type {
 	DashboardPayload,
 	DateRangeKey,
 	FragmentTag,
+	OptimizationFocusArea,
+	OptimizationLevel,
+	OptimizationMetricRow,
+	OptimizationSuggestion,
+	OptimizationSuggestionInput,
 	OverviewRow,
 	PageEntry,
 	PageRow,
@@ -54,12 +67,18 @@ export type {
 	PerformanceClientOptions,
 	QueriesPayload,
 	QueriesQuery,
+	QueryInsight,
+	QueryInsightInput,
+	QueryRewrite,
 	QuerySortKey,
 	Recommendation,
 	RecommendationActionResult,
 	RecommendationsPayload,
 	SlowQueryRow,
+	SuggestedIndex,
 	WebVitalName,
 	WebVitalReport,
 	WebVitalStatus,
 } from '../performance';
+
+export { PerformanceAiError } from '../performance';
