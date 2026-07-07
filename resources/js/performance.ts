@@ -140,6 +140,100 @@ export interface QueriesQuery {
 	sort?: QuerySortKey;
 }
 
+export type AiFeatureKey =
+	| 'performance.query_insight'
+	| 'performance.optimization_suggestion';
+
+export type OptimizationLevel = 'high' | 'medium' | 'low';
+
+export interface SuggestedIndex {
+	table: string;
+	columns: string[];
+	rationale: string;
+}
+
+export interface QueryRewrite {
+	original: string;
+	suggested: string;
+	rationale: string;
+}
+
+export interface QueryInsightInput {
+	query: string;
+	explain?: string | Record<string, unknown> | unknown[] | null;
+	// `schema` is what the caller pasted into the schema hint textarea —
+	// the agent accepts a decoded JSON structure, a plain-text description,
+	// or nothing. The React/Vue/Livewire panels all parse it the same way
+	// so the "JSON or text" placeholder is honest across surfaces.
+	schema?: string | Record<string, unknown> | unknown[] | null;
+	time_ms?: number | null;
+	connection?: string | null;
+}
+
+export interface QueryInsight {
+	summary: string;
+	bottlenecks: string[];
+	suggested_indexes: SuggestedIndex[];
+	rewrites: QueryRewrite[];
+	caveats: string[];
+}
+
+export interface OptimizationFocusArea {
+	title: string;
+	routes: string[];
+	impact: OptimizationLevel;
+	effort: OptimizationLevel;
+	rationale: string;
+	actions: string[];
+}
+
+export interface OptimizationMetricRow {
+	metric: string;
+	route?: string | null;
+	p50?: number;
+	p75?: number;
+	p90?: number;
+	p99?: number;
+	samples?: number;
+	device?: string | null;
+	[key: string]: unknown;
+}
+
+export interface OptimizationSuggestionInput {
+	range: { from: string; to: string };
+	metrics: OptimizationMetricRow[];
+	context?: {
+		traffic_mix?: string;
+		recent_changes?: string;
+		business_priority?: string;
+	};
+}
+
+export interface OptimizationSuggestion {
+	summary: string;
+	focus_areas: OptimizationFocusArea[];
+	quick_wins: string[];
+	caveats: string[];
+}
+
+export interface AiAgentResponse<TOutput> {
+	data: TOutput;
+	feature_key: AiFeatureKey;
+}
+
+export class PerformanceAiError extends Error {
+	public readonly status: number;
+
+	public readonly featureKey: AiFeatureKey | null;
+
+	constructor( message: string, status: number, featureKey: AiFeatureKey | null = null ) {
+		super( message );
+		this.name = 'PerformanceAiError';
+		this.status = status;
+		this.featureKey = featureKey;
+	}
+}
+
 export interface WebVitalReport {
 	name: WebVitalName;
 	value: number;
@@ -300,6 +394,24 @@ export class PerformanceClient {
 		return this.post<{ success: boolean; reason?: string }>( '/metrics', vital );
 	}
 
+	async suggestQueryInsight( input: QueryInsightInput ): Promise<QueryInsight> {
+		const response = await this.postAi<QueryInsight>(
+			'/ai/query-insight',
+			'performance.query_insight',
+			input as unknown as Record<string, unknown>,
+		);
+		return response.data;
+	}
+
+	async suggestOptimization( input: OptimizationSuggestionInput ): Promise<OptimizationSuggestion> {
+		const response = await this.postAi<OptimizationSuggestion>(
+			'/ai/optimization-suggestion',
+			'performance.optimization_suggestion',
+			input as unknown as Record<string, unknown>,
+		);
+		return response.data;
+	}
+
 	private async get<T>( path: string ): Promise<T> {
 		const response = await this.fetchImpl( `${ this.baseUrl }${ path }`, {
 			method: 'GET',
@@ -326,6 +438,51 @@ export class PerformanceClient {
 			throw new Error( `Performance API POST ${ path } failed: ${ response.status }` );
 		}
 		return ( await response.json() ) as T;
+	}
+
+	private async postAi<T>(
+		path: string,
+		featureKey: AiFeatureKey,
+		body: Record<string, unknown>,
+	): Promise<AiAgentResponse<T>> {
+		const response = await this.fetchImpl( `${ this.baseUrl }${ path }`, {
+			method: 'POST',
+			credentials: 'same-origin',
+			headers: {
+				...buildHeaders( this.csrfToken ),
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify( body ),
+		} );
+
+		let parsed: unknown = null;
+		try {
+			parsed = await response.json();
+		} catch {
+			// Non-JSON body (e.g. 5xx HTML error page) — swallow so the
+			// thrown PerformanceAiError still carries the status code.
+		}
+
+		if ( ! response.ok ) {
+			const message = 'object' === typeof parsed && null !== parsed && 'string' === typeof ( parsed as { message?: unknown } ).message
+				? ( parsed as { message: string } ).message
+				: `Performance AI request failed: ${ response.status }`;
+			throw new PerformanceAiError( message, response.status, featureKey );
+		}
+
+		// A 2xx with a null / non-object / missing-`data` body is still a
+		// broken response — surface it as a PerformanceAiError so callers'
+		// existing catch branch fires instead of letting `response.data`
+		// throw an uncaught TypeError one frame away.
+		if ( null === parsed || 'object' !== typeof parsed || ! ( 'data' in parsed ) ) {
+			throw new PerformanceAiError(
+				`Performance AI request returned a malformed response (${ response.status }).`,
+				response.status,
+				featureKey,
+			);
+		}
+
+		return parsed as AiAgentResponse<T>;
 	}
 }
 

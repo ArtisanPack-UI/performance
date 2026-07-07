@@ -13,6 +13,7 @@ A comprehensive performance optimization toolkit for Laravel applications. Image
 - 🗄 **Caching** — page cache, fragment cache, tag-based invalidation, cache warming
 - 🧮 **Database optimization** — N+1 detection, slow query logging, query cache, index suggestions
 - 📊 **Real-user monitoring** — Web Vitals collection, aggregation, and a Livewire admin dashboard
+- 🤖 **AI features** — query-insight and portfolio-level optimization suggestions, with Livewire, React, and Vue trigger components in the box
 - 🧰 **Artisan tooling** — `perf:install`, `perf:warm-cache`, `perf:purge-cache`, `perf:aggregate-metrics`, `perf:critical-css`, `perf:generate-webp`, `perf:suggest-indexes`
 - 🎛 **Every feature is opt-in** — nothing runs until you toggle it on
 
@@ -95,6 +96,53 @@ Performance::script(asset('js/analytics.js'))
 - [docs/home.md](docs/home.md) — documentation home
 - [docs/guides.md](docs/guides.md) — feature walkthroughs
 - [docs/api.md](docs/api.md) — programmatic API reference
+
+### AI features
+
+The performance package registers two AI features via `artisanpack-ui/ai`. Both are gated by the `artisanpack.ai.features.<key>.enabled` toggle and will no-op when the toggle is off.
+
+| Feature key | Purpose | Livewire | React | Vue |
+|-------------|---------|----------|-------|-----|
+| `performance.query_insight` | Explain why a slow query is slow, suggest indexes and rewrites (never runs DDL). | `perf-ai-query-insight-panel` | `QueryInsightPanel` | `QueryInsightPanel` |
+| `performance.optimization_suggestion` | Look at aggregate metrics over a date range and recommend where to focus optimization work. | `perf-ai-optimization-suggestion-panel` | `OptimizationSuggestionPanel` | `OptimizationSuggestionPanel` |
+
+The React and Vue components live inside this package (not in `@artisanpack-ui/react` / `@artisanpack-ui/vue`) so both frameworks are supported without adding a coupling to the shared UI packages.
+
+```blade
+{{-- Livewire --}}
+<livewire:perf-ai-query-insight-panel />
+<livewire:perf-ai-optimization-suggestion-panel window-days="14" />
+```
+
+```tsx
+// React
+import { QueryInsightPanel, OptimizationSuggestionPanel } from '@artisanpack-ui/performance/react';
+
+<QueryInsightPanel clientOptions={ { baseUrl: '/api/performance' } } />
+<OptimizationSuggestionPanel
+    range={ { from: '2026-07-01', to: '2026-07-07' } }
+    metrics={ metrics }
+    clientOptions={ { baseUrl: '/api/performance' } }
+/>
+```
+
+```vue
+<!-- Vue -->
+<script setup lang="ts">
+import { QueryInsightPanel, OptimizationSuggestionPanel } from '@artisanpack-ui/performance/vue';
+</script>
+
+<template>
+    <QueryInsightPanel :client-options="{ baseUrl: '/api/performance' }" />
+    <OptimizationSuggestionPanel
+        :range="{ from: '2026-07-01', to: '2026-07-07' }"
+        :metrics="metrics"
+        :client-options="{ baseUrl: '/api/performance' }"
+    />
+</template>
+```
+
+The React and Vue triggers POST to `POST /api/performance/ai/query-insight` and `POST /api/performance/ai/optimization-suggestion`. Responses are shaped as `{ data: <agent output>, feature_key: string }`. Disabled features return `409`; missing credentials return `412`; validation errors return `422`.
 
 ### Feature guides
 

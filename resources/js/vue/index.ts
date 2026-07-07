@@ -27,10 +27,16 @@ export { default as QueryAnalyzer } from './QueryAnalyzer.vue';
 
 export { default as RecommendationsPanel } from './RecommendationsPanel.vue';
 
+export { default as QueryInsightPanel } from './QueryInsightPanel.vue';
+
+export { default as OptimizationSuggestionPanel } from './OptimizationSuggestionPanel.vue';
+
 export { usePerformance } from './usePerformance';
 export type { UsePerformanceOptions, UsePerformanceResult } from './usePerformance';
 
 export type {
+	AiAgentResponse,
+	AiFeatureKey,
 	CacheActionResult,
 	CachePayload,
 	CacheSummary,
@@ -40,6 +46,11 @@ export type {
 	DashboardPayload,
 	DateRangeKey,
 	FragmentTag,
+	OptimizationFocusArea,
+	OptimizationLevel,
+	OptimizationMetricRow,
+	OptimizationSuggestion,
+	OptimizationSuggestionInput,
 	OverviewRow,
 	PageEntry,
 	PageRow,
@@ -47,12 +58,18 @@ export type {
 	PerformanceClientOptions,
 	QueriesPayload,
 	QueriesQuery,
+	QueryInsight,
+	QueryInsightInput,
+	QueryRewrite,
 	QuerySortKey,
 	Recommendation,
 	RecommendationActionResult,
 	RecommendationsPayload,
 	SlowQueryRow,
+	SuggestedIndex,
 	WebVitalName,
 	WebVitalReport,
 	WebVitalStatus,
 } from '../performance';
+
+export { PerformanceAiError } from '../performance';

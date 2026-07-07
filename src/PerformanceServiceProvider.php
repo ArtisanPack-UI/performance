@@ -18,6 +18,8 @@ declare( strict_types=1 );
 
 namespace ArtisanPackUI\Performance;
 
+use ArtisanPackUI\Performance\Ai\Agents\OptimizationSuggestionAgent;
+use ArtisanPackUI\Performance\Ai\Agents\PerformanceInsightAgent;
 use ArtisanPackUI\Performance\Cache\CacheInvalidator;
 use ArtisanPackUI\Performance\Cache\CacheStatistics;
 use ArtisanPackUI\Performance\Cache\CacheStrategyManager;
@@ -41,6 +43,8 @@ use ArtisanPackUI\Performance\Images\DominantColorExtractor;
 use ArtisanPackUI\Performance\Images\ResponsiveImageGenerator;
 use ArtisanPackUI\Performance\JavaScript\ScriptManager;
 use ArtisanPackUI\Performance\Listeners\OptimizeUploadedMedia;
+use ArtisanPackUI\Performance\Livewire\Ai\OptimizationSuggestionPanel as OptimizationSuggestionPanelComponent;
+use ArtisanPackUI\Performance\Livewire\Ai\QueryInsightPanel as QueryInsightPanelComponent;
 use ArtisanPackUI\Performance\Livewire\CacheManager as CacheManagerComponent;
 use ArtisanPackUI\Performance\Livewire\MetricsChart as MetricsChartComponent;
 use ArtisanPackUI\Performance\Livewire\PerformanceDashboard as PerformanceDashboardComponent;
@@ -256,8 +260,39 @@ class PerformanceServiceProvider extends ServiceProvider
         $this->registerMediaLibraryIntegration();
         $this->registerOctaneResetHooks();
         $this->registerCommands();
+        $this->registerAiGate();
         $this->registerRoutes();
         $this->publishConfiguration();
+    }
+
+    /**
+     * Declare AI features owned by this package.
+     *
+     * Auto-discovered by artisanpack-ui/ai when the ai package is installed.
+     * Each entry maps a fully-qualified feature key to the agent class that
+     * fulfills it, along with a human-readable label and description for the
+     * admin UI.
+     *
+     * @since 1.1.0
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function aiFeatures(): array
+    {
+        return [
+            'performance.query_insight'          => [
+                'agent'       => PerformanceInsightAgent::class,
+                'package'     => 'artisanpack-ui/performance',
+                'label'       => __( 'Query insight' ),
+                'description' => __( 'Explain why a slow query is slow and suggest indexes or rewrites.' ),
+            ],
+            'performance.optimization_suggestion' => [
+                'agent'       => OptimizationSuggestionAgent::class,
+                'package'     => 'artisanpack-ui/performance',
+                'label'       => __( 'Optimization suggestions' ),
+                'description' => __( 'Look at aggregate performance metrics and recommend where to focus optimization work.' ),
+            ],
+        ];
     }
 
     /**
@@ -464,6 +499,8 @@ class PerformanceServiceProvider extends ServiceProvider
         \Livewire\Livewire::component( 'perf-cache-manager', CacheManagerComponent::class );
         \Livewire\Livewire::component( 'perf-query-analyzer', QueryAnalyzerComponent::class );
         \Livewire\Livewire::component( 'perf-recommendations-panel', RecommendationsPanelComponent::class );
+        \Livewire\Livewire::component( 'perf-ai-query-insight-panel', QueryInsightPanelComponent::class );
+        \Livewire\Livewire::component( 'perf-ai-optimization-suggestion-panel', OptimizationSuggestionPanelComponent::class );
     }
 
     /**
@@ -508,15 +545,65 @@ class PerformanceServiceProvider extends ServiceProvider
 
         $adminMiddleware[] = 'throttle:' . $throttle;
 
+        // AI route group rides a separate middleware stack. These
+        // endpoints dispatch to paid LLM providers so the shipped
+        // default gates them behind Sanctum plus a `performance.ai.use`
+        // Gate — sharing the stateless public middleware used by the
+        // metrics ingest would let anonymous callers drain provider
+        // credit. Hosts running a different guard can override the
+        // stack; the Gate check inside the controller still fires.
+        $aiMiddleware = (array) config(
+            'artisanpack.performance.routes.ai_middleware',
+            [ 'api', 'auth:sanctum' ],
+        );
+
+        $aiMiddleware[] = 'throttle:' . $throttle;
+
         Route::middleware( $adminMiddleware )
             ->prefix( $prefix )
             ->name( 'artisanpack.performance.api.admin.' )
             ->group( __DIR__ . '/../routes/api-admin.php' );
 
+        Route::middleware( $aiMiddleware )
+            ->prefix( $prefix )
+            ->name( 'artisanpack.performance.api.' )
+            ->group( __DIR__ . '/../routes/api-ai.php' );
+
         Route::middleware( $middleware )
             ->prefix( $prefix )
             ->name( 'artisanpack.performance.api.' )
             ->group( __DIR__ . '/../routes/api.php' );
+    }
+
+    /**
+     * Register the default `performance.ai.use` authorization gate.
+     *
+     * The AI API endpoints (`/api/performance/ai/*`) gate on this
+     * ability so that paid quota isn't spent by every authenticated
+     * user. Ships with a permissive default (any authenticated user can
+     * use AI features) so upgrades are non-breaking; installers should
+     * override this gate in their own `AuthServiceProvider` to enforce
+     * a stricter policy — limit to admins, apply per-tenant quotas, etc.
+     *
+     * @since 1.1.0
+     */
+    protected function registerAiGate(): void
+    {
+        $gate = \Illuminate\Support\Facades\Gate::getFacadeRoot();
+
+        // Guard so an installer who registered their own `performance.ai.use`
+        // before our boot() (via a plugin, package-first AuthServiceProvider,
+        // etc.) is not silently overwritten by the permissive default.
+        if ( method_exists( $gate, 'has' ) && $gate->has( 'performance.ai.use' ) ) {
+            return;
+        }
+
+        \Illuminate\Support\Facades\Gate::define(
+            'performance.ai.use',
+            static function ( $user = null ): bool {
+                return null !== $user;
+            },
+        );
     }
 
     /**
