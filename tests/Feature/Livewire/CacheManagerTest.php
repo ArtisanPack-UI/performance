@@ -4,8 +4,11 @@ declare( strict_types=1 );
 
 use ArtisanPackUI\Performance\Cache\FragmentCache;
 use ArtisanPackUI\Performance\Cache\PageCacheManager;
+use ArtisanPackUI\Performance\Jobs\WarmPageCacheJob;
 use ArtisanPackUI\Performance\Livewire\CacheManager;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 beforeEach( function (): void {
@@ -92,6 +95,40 @@ it( 'reports an error when warmCache has no configured URLs', function (): void 
         ->call( 'warmCache' )
         ->assertSet( 'statusIsError', true )
         ->assertSee( 'No cache_warming.urls configured.' );
+} );
+
+it( 'queues warming instead of requesting URLs inside the request', function (): void {
+    Queue::fake();
+    Http::fake();
+    config( [
+        'queue.default'                              => 'database',
+        'artisanpack.performance.cache_warming.urls' => [ '/products', '/about' ],
+    ] );
+
+    Livewire::test( CacheManager::class )
+        ->call( 'warmCache' )
+        ->assertSet( 'statusIsError', false )
+        ->assertSee( 'Queued cache warming for 2 URLs.' );
+
+    Http::assertNothingSent();
+    Queue::assertPushed( WarmPageCacheJob::class );
+} );
+
+it( 'reports an error instead of warming inline on a sync queue', function (): void {
+    Queue::fake();
+    Http::fake();
+    config( [
+        'queue.default'                              => 'sync',
+        'artisanpack.performance.cache_warming.urls' => [ '/products' ],
+    ] );
+
+    Livewire::test( CacheManager::class )
+        ->call( 'warmCache' )
+        ->assertSet( 'statusIsError', true )
+        ->assertSee( 'Cache warming needs a queue worker.' );
+
+    Http::assertNothingSent();
+    Queue::assertNothingPushed();
 } );
 
 it( 'merges host-supplied labels over defaults', function (): void {

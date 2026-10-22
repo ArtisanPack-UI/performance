@@ -20,6 +20,7 @@ namespace ArtisanPackUI\Performance\Cache;
 
 use ArtisanPackUI\Performance\Events\CachePurged;
 use ArtisanPackUI\Performance\Events\CacheWarmed;
+use ArtisanPackUI\Performance\Jobs\WarmPageCacheJob;
 use ArtisanPackUI\Performance\Speculative\UrlPatternMatcher;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Http\Request;
@@ -71,6 +72,19 @@ class PageCacheManager
      * @var int
      */
     public const INDEX_TTL = 31536000;
+
+    /**
+     * Queue drivers that run jobs inside the dispatching PHP worker.
+     *
+     * `sync` runs the job inline and `deferred` runs it after the response
+     * in the same worker, so both would keep the web worker busy while the
+     * warmer requests the app's own URLs.
+     *
+     * @since 1.2.0
+     *
+     * @var array<int, string>
+     */
+    public const IN_PROCESS_QUEUE_DRIVERS = [ 'sync', 'deferred' ];
 
     /**
      * Stores a rendered response for the given request.
@@ -247,6 +261,10 @@ class PageCacheManager
      * advance a progress bar without duplicating the HTTP loop (and without
      * fanning the event listeners by calling `warmPageCache()` per URL).
      *
+     * Every request is bounded by `cache_warming.timeout` and
+     * `cache_warming.connect_timeout`. This method runs synchronously, so
+     * web-request callers should use `queueWarmPageCache()` instead.
+     *
      * @since 1.0.0
      *
      * @param  array<int, string>  $urls  Absolute or relative URLs to warm.
@@ -269,7 +287,9 @@ class PageCacheManager
             $absolute = $this->absoluteUrl( $url );
 
             try {
-                $response = Http::get( $absolute );
+                $response = Http::timeout( $this->warmTimeout() )
+                    ->connectTimeout( $this->warmConnectTimeout() )
+                    ->get( $absolute );
 
                 $entry = [
                     'status' => $response->status(),
@@ -298,6 +318,51 @@ class PageCacheManager
         CacheWarmed::dispatch( array_keys( $results ), $warmed );
 
         return $results;
+    }
+
+    /**
+     * Queues a warming pass for the given URLs on a queue worker.
+     *
+     * Web-request callers (the admin dashboard and its API) must use this
+     * instead of `warmPageCache()`: warming inline makes the request hold a
+     * PHP worker while it waits on its own sub-requests, which can deadlock
+     * a small pool. Returns `false` without dispatching when the warming
+     * connection uses an in-process driver (`sync`, `deferred`), since that
+     * would run the job in the same worker and reintroduce the problem.
+     *
+     * @since 1.2.0
+     *
+     * @param  array<int, string>  $urls  Absolute or relative URLs to warm.
+     *
+     * @return bool Whether the warming job was queued.
+     */
+    public function queueWarmPageCache( array $urls ): bool
+    {
+        if ( ! $this->canQueueWarming() ) {
+            return false;
+        }
+
+        WarmPageCacheJob::dispatch( array_values( $urls ) );
+
+        return true;
+    }
+
+    /**
+     * Reports whether the warming queue connection runs jobs off-request.
+     *
+     * @since 1.2.0
+     */
+    public function canQueueWarming(): bool
+    {
+        $connection = config( 'artisanpack.performance.cache_warming.connection' );
+
+        if ( ! is_string( $connection ) || '' === $connection ) {
+            $connection = (string) config( 'queue.default', 'sync' );
+        }
+
+        $driver = config( "queue.connections.{$connection}.driver", 'sync' );
+
+        return ! in_array( $driver, self::IN_PROCESS_QUEUE_DRIVERS, true );
     }
 
     /**
@@ -633,6 +698,26 @@ class PageCacheManager
         }
 
         return $base . '/' . ltrim( $url, '/' );
+    }
+
+    /**
+     * Returns the total timeout, in seconds, for each warm request.
+     *
+     * @since 1.2.0
+     */
+    protected function warmTimeout(): int
+    {
+        return max( 1, (int) config( 'artisanpack.performance.cache_warming.timeout', 10 ) );
+    }
+
+    /**
+     * Returns the connect timeout, in seconds, for each warm request.
+     *
+     * @since 1.2.0
+     */
+    protected function warmConnectTimeout(): int
+    {
+        return max( 1, (int) config( 'artisanpack.performance.cache_warming.connect_timeout', 5 ) );
     }
 
     /**

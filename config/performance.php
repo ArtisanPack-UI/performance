@@ -253,9 +253,20 @@ return [
     | Cache Warming
     |--------------------------------------------------------------------------
     |
-    | Configure background cache warming. The warmer issues concurrent HTTP
-    | requests to the listed routes/URLs with optional inter-request delay
-    | to avoid overloading the origin.
+    | Configure background cache warming. The warmer issues HTTP requests to
+    | the listed routes/URLs with optional inter-request delay to avoid
+    | overloading the origin. Each request is bounded by `timeout` and
+    | `connect_timeout` (seconds).
+    |
+    | Warming triggered from the admin dashboard is dispatched to the queue
+    | on `connection` / `queue` so the app never requests itself inside a
+    | web request. A `sync` or `deferred` connection is refused for that
+    | reason, since both run the job in the same PHP worker — run
+    | `php artisan perf:warm-cache` instead when no worker is available.
+    |
+    | The queued job's timeout is sized to the URL list (URLs x (`timeout` +
+    | `delay_ms`) + 30s). Keep the queue connection's `retry_after` above
+    | that for long lists so a pass isn't handed to a second worker.
     |
     */
 
@@ -265,6 +276,10 @@ return [
         'urls' => [],
         'concurrent_requests' => 5,
         'delay_ms' => 100,
+        'timeout' => 10,
+        'connect_timeout' => 5,
+        'connection' => env('PERF_CACHE_WARMING_CONNECTION'),
+        'queue' => env('PERF_CACHE_WARMING_QUEUE', 'default'),
     ],
 
     /*

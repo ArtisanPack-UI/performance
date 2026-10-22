@@ -23,6 +23,7 @@ declare( strict_types=1 );
 
 namespace ArtisanPackUI\Performance\Livewire;
 
+use ArtisanPackUI\Performance\Cache\PageCacheManager;
 use ArtisanPackUI\Performance\Events\IndexMigrationRequested;
 use ArtisanPackUI\Performance\Monitoring\RecommendationEngine;
 use Illuminate\Contracts\View\View;
@@ -278,7 +279,7 @@ class RecommendationsPanel extends Component
     }
 
     /**
-     * Runs the configured cache warming URLs through the page cache warmer.
+     * Queues the configured cache warming URLs for the page cache warmer.
      *
      * @since 1.0.0
      */
@@ -293,21 +294,17 @@ class RecommendationsPanel extends Component
             return;
         }
 
-        $results = app( \ArtisanPackUI\Performance\Cache\PageCacheManager::class )
-            ->warmPageCache( $urls );
+        if ( ! app( PageCacheManager::class )->queueWarmPageCache( $urls ) ) {
+            $this->setStatus( __( 'Cache warming needs a queue worker. Configure a non-sync queue connection or run `php artisan perf:warm-cache`.' ), true );
 
-        $succeeded = 0;
-
-        foreach ( $results as $entry ) {
-            if ( is_array( $entry ) && true === ( $entry['ok'] ?? false ) ) {
-                $succeeded++;
-            }
+            return;
         }
 
-        $this->setStatus( __( 'Warmed :count of :total URLs.', [
-            'count' => $succeeded,
-            'total' => count( $results ),
-        ] ) );
+        $this->setStatus( trans_choice(
+            'Queued cache warming for :count URL.|Queued cache warming for :count URLs.',
+            count( $urls ),
+            [ 'count' => count( $urls ) ],
+        ) );
     }
 
     /**
