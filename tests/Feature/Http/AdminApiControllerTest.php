@@ -14,10 +14,13 @@
 
 declare( strict_types=1 );
 
+use ArtisanPackUI\Performance\Jobs\WarmPageCacheJob;
 use ArtisanPackUI\Performance\Models\PerformanceMetric;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 
 uses( RefreshDatabase::class );
 
@@ -133,6 +136,41 @@ it( 'reports the empty-URLs case as an error from the warm action', function ():
         ->assertJson( [ 'is_error' => true ] );
 } );
 
+it( 'queues the warm action instead of requesting URLs inside the request', function (): void {
+    Queue::fake();
+    Http::fake();
+    config( [
+        'queue.default'                              => 'database',
+        'artisanpack.performance.cache_warming.urls' => [ '/products', '/about' ],
+    ] );
+
+    $this->postJson( '/api/performance/admin/cache/actions', [ 'action' => 'warm' ] )
+        ->assertSuccessful()
+        ->assertJson( [
+            'is_error' => false,
+            'message'  => 'Queued cache warming for 2 URLs.',
+        ] );
+
+    Http::assertNothingSent();
+    Queue::assertPushed( WarmPageCacheJob::class );
+} );
+
+it( 'reports the warm action as an error on a sync queue', function (): void {
+    Queue::fake();
+    Http::fake();
+    config( [
+        'queue.default'                              => 'sync',
+        'artisanpack.performance.cache_warming.urls' => [ '/products' ],
+    ] );
+
+    $this->postJson( '/api/performance/admin/cache/actions', [ 'action' => 'warm' ] )
+        ->assertSuccessful()
+        ->assertJson( [ 'is_error' => true ] );
+
+    Http::assertNothingSent();
+    Queue::assertNothingPushed();
+} );
+
 it( 'returns the queries payload with rows/available_routes/sort keys', function (): void {
     $response = $this->getJson( '/api/performance/admin/queries?range=7d&sort=time' );
 
@@ -195,4 +233,39 @@ it( 'clears dismissals on reset', function (): void {
     ] )->assertSuccessful();
 
     expect( $this->getJson( '/api/performance/admin/recommendations' )->json( 'dismissed' ) )->toBe( [] );
+} );
+
+it( 'queues warming from the warm-cache recommendation action', function (): void {
+    Queue::fake();
+    Http::fake();
+    config( [
+        'queue.default'                              => 'database',
+        'artisanpack.performance.page_cache.enabled' => true,
+        'artisanpack.performance.page_cache.driver'  => 'array',
+        'artisanpack.performance.cache_warming.urls' => [ '/products' ],
+    ] );
+
+    PerformanceMetric::query()->create( [
+        'metric'       => 'LCP',
+        'route'        => '/products',
+        'date'         => today()->toDateString(),
+        'p50'          => 1000,
+        'p75'          => 1000,
+        'p90'          => 1000,
+        'p99'          => 1000,
+        'sample_count' => 100,
+    ] );
+
+    $this->postJson( '/api/performance/admin/recommendations/actions', [
+        'action' => 'apply',
+        'id'     => 'cache:page_empty',
+    ] )
+        ->assertSuccessful()
+        ->assertJson( [
+            'is_error' => false,
+            'message'  => 'Queued cache warming for 1 URL.',
+        ] );
+
+    Http::assertNothingSent();
+    Queue::assertPushed( WarmPageCacheJob::class );
 } );

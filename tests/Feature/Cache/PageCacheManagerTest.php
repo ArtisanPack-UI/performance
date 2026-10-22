@@ -5,11 +5,13 @@ declare( strict_types=1 );
 use ArtisanPackUI\Performance\Cache\PageCacheManager;
 use ArtisanPackUI\Performance\Events\CachePurged;
 use ArtisanPackUI\Performance\Events\CacheWarmed;
+use ArtisanPackUI\Performance\Jobs\WarmPageCacheJob;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 
 beforeEach( function (): void {
     config( [ 'cache.default' => 'array' ] );
@@ -219,6 +221,102 @@ it( 'warms the page cache and dispatches CacheWarmed', function (): void {
         ->and( $results['/about']['ok'] )->toBeFalse();
 
     Event::assertDispatched( CacheWarmed::class );
+} );
+
+it( 'bounds every warm request with the configured timeouts', function (): void {
+    config( [
+        'app.url'                                               => 'https://example.test',
+        'artisanpack.performance.cache_warming.timeout'         => 7,
+        'artisanpack.performance.cache_warming.connect_timeout' => 2,
+    ] );
+
+    $seen = [];
+
+    Http::fake( function ( $request, array $options ) use ( &$seen ) {
+        $seen[] = [ $options['timeout'] ?? null, $options['connect_timeout'] ?? null ];
+
+        return Http::response( 'ok', 200 );
+    } );
+
+    ( new PageCacheManager )->warmPageCache( [ '/products', '/about' ] );
+
+    expect( $seen )->toBe( [ [ 7, 2 ], [ 7, 2 ] ] );
+} );
+
+it( 'falls back to short default timeouts when none are configured', function (): void {
+    config( [ 'app.url' => 'https://example.test', 'artisanpack.performance.cache_warming' => [] ] );
+
+    $seen = [];
+
+    Http::fake( function ( $request, array $options ) use ( &$seen ) {
+        $seen[] = [ $options['timeout'] ?? null, $options['connect_timeout'] ?? null ];
+
+        return Http::response( 'ok', 200 );
+    } );
+
+    ( new PageCacheManager )->warmPageCache( [ '/products' ] );
+
+    expect( $seen )->toBe( [ [ 10, 5 ] ] );
+} );
+
+it( 'queues a warming job instead of requesting URLs inline', function (): void {
+    Queue::fake();
+    Http::fake();
+    config( [ 'queue.default' => 'database' ] );
+
+    $queued = ( new PageCacheManager )->queueWarmPageCache( [ '/products', '/about' ] );
+
+    expect( $queued )->toBeTrue();
+    Http::assertNothingSent();
+    Queue::assertPushed( WarmPageCacheJob::class, fn ( WarmPageCacheJob $job ): bool => [ '/products', '/about' ] === $job->urls );
+} );
+
+it( 'refuses to queue warming on a sync connection', function (): void {
+    Queue::fake();
+    Http::fake();
+    config( [ 'queue.default' => 'sync' ] );
+
+    $queued = ( new PageCacheManager )->queueWarmPageCache( [ '/products' ] );
+
+    expect( $queued )->toBeFalse();
+    Http::assertNothingSent();
+    Queue::assertNothingPushed();
+} );
+
+it( 'refuses to queue warming on a deferred connection', function (): void {
+    Queue::fake();
+    config( [
+        'queue.connections.deferred' => [ 'driver' => 'deferred' ],
+        'queue.default'              => 'deferred',
+    ] );
+
+    expect( ( new PageCacheManager )->queueWarmPageCache( [ '/products' ] ) )->toBeFalse();
+    Queue::assertNothingPushed();
+} );
+
+it( 'checks the dedicated warming connection rather than the default one', function (): void {
+    Queue::fake();
+    config( [
+        'queue.default'                                    => 'database',
+        'artisanpack.performance.cache_warming.connection' => 'sync',
+    ] );
+
+    expect( ( new PageCacheManager )->queueWarmPageCache( [ '/products' ] ) )->toBeFalse();
+
+    config( [
+        'queue.default'                                    => 'sync',
+        'artisanpack.performance.cache_warming.connection' => 'database',
+    ] );
+
+    expect( ( new PageCacheManager )->queueWarmPageCache( [ '/products' ] ) )->toBeTrue();
+} );
+
+it( 'refuses to queue warming when the connection is not configured', function (): void {
+    Queue::fake();
+    config( [ 'artisanpack.performance.cache_warming.connection' => 'missing' ] );
+
+    expect( ( new PageCacheManager )->queueWarmPageCache( [ '/products' ] ) )->toBeFalse();
+    Queue::assertNothingPushed();
 } );
 
 it( 'skips caching when an authenticated rule applies', function (): void {

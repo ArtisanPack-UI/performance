@@ -187,17 +187,16 @@ class RecommendationsAdminApiController extends AdminApiController
             return [(string) __( 'No cache_warming.urls configured.' ), true];
         }
 
-        $results = app( PageCacheManager::class )->warmPageCache( $urls );
-        $ok      = 0;
-
-        foreach ( $results as $entry ) {
-            if ( is_array( $entry ) && true === ( $entry['ok'] ?? false ) ) {
-                $ok++;
-            }
+        if ( ! app( PageCacheManager::class )->queueWarmPageCache( $urls ) ) {
+            return [(string) __( 'Cache warming needs a queue worker. Configure a non-sync queue connection or run `php artisan perf:warm-cache`.' ), true];
         }
 
         return [
-            (string) __( 'Warmed :count of :total URLs.', ['count' => $ok, 'total' => count( $results )] ),
+            (string) trans_choice(
+                'Queued cache warming for :count URL.|Queued cache warming for :count URLs.',
+                count( $urls ),
+                ['count' => count( $urls )],
+            ),
             false,
         ];
     }

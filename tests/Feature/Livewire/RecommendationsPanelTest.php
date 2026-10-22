@@ -2,11 +2,14 @@
 
 declare( strict_types=1 );
 
+use ArtisanPackUI\Performance\Jobs\WarmPageCacheJob;
 use ArtisanPackUI\Performance\Livewire\RecommendationsPanel;
 use ArtisanPackUI\Performance\Models\PerformanceMetric;
 use ArtisanPackUI\Performance\Models\SlowQuery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Session;
 use Livewire\Livewire;
 
@@ -185,4 +188,33 @@ it( 'merges host-supplied labels over defaults', function (): void {
         ],
     ] )
         ->assertSee( 'Priorities' );
+} );
+
+it( 'queues warming from the page-cache-empty recommendation', function (): void {
+    Queue::fake();
+    Http::fake();
+    config( [
+        'queue.default'                              => 'database',
+        'artisanpack.performance.page_cache.driver'  => 'array',
+        'artisanpack.performance.cache_warming.urls' => [ '/products' ],
+    ] );
+
+    PerformanceMetric::create( [
+        'date'         => '2026-06-30',
+        'route'        => 'home',
+        'metric'       => 'LCP',
+        'p50'          => 1000,
+        'p75'          => 1000,
+        'p90'          => 1000,
+        'p99'          => 1000,
+        'sample_count' => 100,
+    ] );
+
+    Livewire::test( RecommendationsPanel::class )
+        ->call( 'applyAction', 'cache:page_empty' )
+        ->assertSet( 'statusIsError', false )
+        ->assertSee( 'Queued cache warming for 1 URL.' );
+
+    Http::assertNothingSent();
+    Queue::assertPushed( WarmPageCacheJob::class );
 } );

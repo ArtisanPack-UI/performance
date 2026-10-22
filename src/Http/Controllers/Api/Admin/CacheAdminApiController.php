@@ -90,19 +90,16 @@ class CacheAdminApiController extends AdminApiController
                     break;
                 }
 
-                $results = $manager->warmPageCache( $urls );
-                $ok      = 0;
-
-                foreach ( $results as $entry ) {
-                    if ( is_array( $entry ) && true === ( $entry['ok'] ?? false ) ) {
-                        $ok++;
-                    }
+                if ( ! $manager->queueWarmPageCache( $urls ) ) {
+                    $isError = true;
+                    $message = (string) __( 'Cache warming needs a queue worker. Configure a non-sync queue connection or run `php artisan perf:warm-cache`.' );
+                    break;
                 }
 
                 $message = (string) trans_choice(
-                    'Warmed :count of :total URL.|Warmed :count of :total URLs.',
-                    count( $results ),
-                    [ 'count' => $ok, 'total' => count( $results ) ],
+                    'Queued cache warming for :count URL.|Queued cache warming for :count URLs.',
+                    count( $urls ),
+                    [ 'count' => count( $urls ) ],
                 );
                 break;
 
