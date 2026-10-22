@@ -91,6 +91,27 @@ Performance::warmPageCache(['/', '/pricing', '/docs']);
 
 Fires `CacheWarmed` on success.
 
+`warmPageCache()` runs synchronously and requests each URL in turn, so call it from the CLI, a scheduled command, or a queued job — never from inside a web request. To warm from a web request, queue the pass instead:
+
+```php
+Performance::pageCache()->queueWarmPageCache(['/', '/pricing', '/docs']); // false when no off-request queue is available
+```
+
+`queueWarmPageCache()` dispatches `WarmPageCacheJob` and returns `false` without dispatching when the warming connection uses the `sync` or `deferred` driver, since both would run the job in the same PHP worker. The job is unique per URL set, so repeated dispatches while a pass is pending don't stack.
+
+Warming is configured under `cache_warming` in `config/artisanpack/performance.php`:
+
+| Key | Default | Purpose |
+|---|---|---|
+| `urls` | `[]` | URLs warmed by the dashboard and by `perf:warm-cache` with no options |
+| `delay_ms` | `100` | Pause between requests, in milliseconds |
+| `timeout` | `10` | Total timeout per request, in seconds |
+| `connect_timeout` | `5` | Connect timeout per request, in seconds |
+| `connection` | `PERF_CACHE_WARMING_CONNECTION` (falls back to `queue.default`) | Queue connection for `WarmPageCacheJob` |
+| `queue` | `PERF_CACHE_WARMING_QUEUE` (`default`) | Queue name for `WarmPageCacheJob` |
+
+The job's timeout is sized to the URL list (URLs × (`timeout` + `delay_ms`) + 30 seconds). For long lists, keep the queue connection's `retry_after` above that value so a running pass isn't handed to a second worker.
+
 ## 7. Purge on demand
 
 ```bash
@@ -108,6 +129,8 @@ Mount the `perf-cache-manager` Livewire component to expose invalidation, warmin
 ```blade
 <livewire:perf-cache-manager />
 ```
+
+The dashboard's warm action queues a `WarmPageCacheJob` for `cache_warming.urls` rather than warming inline, so it needs a queue worker. When only a `sync` or `deferred` connection is configured, it reports an error and points to `php artisan perf:warm-cache`.
 
 ## Related
 
