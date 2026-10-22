@@ -264,6 +264,10 @@ return [
     | reason, since both run the job in the same PHP worker — run
     | `php artisan perf:warm-cache` instead when no worker is available.
     |
+    | The queued job's timeout is sized to the URL list (URLs x (`timeout` +
+    | `delay_ms`) + 30s). Keep the queue connection's `retry_after` above
+    | that for long lists so a pass isn't handed to a second worker.
+    |
     */
 
     'cache_warming' => [

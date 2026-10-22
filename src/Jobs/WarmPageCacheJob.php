@@ -62,6 +62,19 @@ class WarmPageCacheJob implements ShouldBeUnique, ShouldQueue
     public int $uniqueFor = 600;
 
     /**
+     * Seconds the worker may spend on this pass before killing it.
+     *
+     * Sized to the URL list in the constructor, since URLs are requested
+     * one after another and each can use the full request timeout plus
+     * the inter-request delay. Overrides `queue:work --timeout`; the queue
+     * connection's `retry_after` must stay above it, or a long pass can be
+     * released to another worker while it is still running.
+     *
+     * @since 1.2.0
+     */
+    public int $timeout;
+
+    /**
      * Creates a new job instance.
      *
      * @since 1.2.0
@@ -78,6 +91,12 @@ class WarmPageCacheJob implements ShouldBeUnique, ShouldQueue
         }
 
         $this->onQueue( (string) config( 'artisanpack.performance.cache_warming.queue', 'default' ) );
+
+        $perUrlSeconds = max( 1, (int) config( 'artisanpack.performance.cache_warming.timeout', 10 ) )
+            + max( 0, (int) config( 'artisanpack.performance.cache_warming.delay_ms', 0 ) ) / 1000;
+
+        $this->timeout   = (int) ceil( count( $urls ) * $perUrlSeconds ) + 30;
+        $this->uniqueFor = max( $this->uniqueFor, $this->timeout + 30 );
     }
 
     /**

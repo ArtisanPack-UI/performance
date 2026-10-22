@@ -22,6 +22,7 @@ use ArtisanPackUI\Performance\Cache\CacheStatistics;
 use ArtisanPackUI\Performance\Cache\PageCacheManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Throwable;
 
 /**
  * Cache admin API controller.
@@ -90,7 +91,15 @@ class CacheAdminApiController extends AdminApiController
                     break;
                 }
 
-                if ( ! $manager->queueWarmPageCache( $urls ) ) {
+                try {
+                    $queued = $manager->queueWarmPageCache( $urls );
+                } catch ( Throwable $e ) {
+                    $isError = true;
+                    $message = (string) __( 'Failed to warm cache: :message', [ 'message' => $e->getMessage() ] );
+                    break;
+                }
+
+                if ( ! $queued ) {
                     $isError = true;
                     $message = (string) __( 'Cache warming needs a queue worker. Configure a non-sync queue connection or run `php artisan perf:warm-cache`.' );
                     break;

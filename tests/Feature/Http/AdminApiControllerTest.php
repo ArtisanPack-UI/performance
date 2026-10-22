@@ -155,6 +155,24 @@ it( 'queues the warm action instead of requesting URLs inside the request', func
     Queue::assertPushed( WarmPageCacheJob::class );
 } );
 
+it( 'returns a JSON error when the warm job cannot be queued', function (): void {
+    config( [
+        'queue.default'                              => 'database',
+        'artisanpack.performance.cache_warming.urls' => [ '/products' ],
+    ] );
+
+    $this->mock( ArtisanPackUI\Performance\Cache\PageCacheManager::class )
+        ->shouldReceive( 'queueWarmPageCache' )
+        ->andThrow( new RuntimeException( 'Queue backend unavailable' ) );
+
+    $this->postJson( '/api/performance/admin/cache/actions', [ 'action' => 'warm' ] )
+        ->assertSuccessful()
+        ->assertJson( [
+            'is_error' => true,
+            'message'  => 'Failed to warm cache: Queue backend unavailable',
+        ] );
+} );
+
 it( 'reports the warm action as an error on a sync queue', function (): void {
     Queue::fake();
     Http::fake();

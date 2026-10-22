@@ -64,3 +64,28 @@ it( 'does not stack duplicate passes for the same URL set', function (): void {
 
     Queue::assertPushed( WarmPageCacheJob::class, 2 );
 } );
+
+it( 'sizes its timeout to the full sequential URL list', function (): void {
+    config( [
+        'artisanpack.performance.cache_warming.timeout'  => 10,
+        'artisanpack.performance.cache_warming.delay_ms' => 500,
+    ] );
+
+    $job = new WarmPageCacheJob( [ '/a', '/b', '/c', '/d', '/e', '/f' ] );
+
+    // 6 URLs x (10s + 0.5s) = 63s, plus 30s of headroom.
+    expect( $job->timeout )->toBe( 93 )
+        ->and( $job->uniqueFor )->toBe( 600 );
+} );
+
+it( 'keeps the uniqueness lock longer than a long pass can run', function (): void {
+    config( [
+        'artisanpack.performance.cache_warming.timeout'  => 10,
+        'artisanpack.performance.cache_warming.delay_ms' => 0,
+    ] );
+
+    $job = new WarmPageCacheJob( array_map( static fn ( int $i ): string => '/page-' . $i, range( 1, 100 ) ) );
+
+    expect( $job->timeout )->toBe( 1030 )
+        ->and( $job->uniqueFor )->toBe( 1060 );
+} );
