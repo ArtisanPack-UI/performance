@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-22
+
+Moves dashboard-triggered cache warming onto the queue and time-boxes every warm request, so warming from a web request can no longer tie up (or deadlock) the PHP worker pool. Also moves tag releases into a dedicated workflow that imports the docs on the docs site.
+
+### Added
+
+- `WarmPageCacheJob` — queued, unique-per-URL-set job that runs a warming pass from a queue worker. Paces requests with `cache_warming.delay_ms`, runs once (`$tries = 1`), and sizes its `$timeout` to the URL list (URLs × (`timeout` + `delay_ms`) + 30s).
+- `PageCacheManager::queueWarmPageCache( array $urls ): bool` — dispatches `WarmPageCacheJob`; returns `false` without dispatching when the warming connection uses an in-process driver.
+- `PageCacheManager::canQueueWarming(): bool` and the `PageCacheManager::IN_PROCESS_QUEUE_DRIVERS` constant (`sync`, `deferred`).
+- `cache_warming.timeout` (default `10`) and `cache_warming.connect_timeout` (default `5`) config keys, in seconds.
+- `cache_warming.connection` (`PERF_CACHE_WARMING_CONNECTION`, defaults to `queue.default`) and `cache_warming.queue` (`PERF_CACHE_WARMING_QUEUE`, default `default`) config keys.
+
+### Changed
+
+- The `perf-cache-manager` Livewire component, the Recommendations panel's warm-cache action, and the cache and recommendations admin API endpoints now queue warming instead of running it inline. They report "Queued cache warming for N URLs." and return an error pointing to `php artisan perf:warm-cache` when only a `sync` or `deferred` queue connection is available.
+- Tag releases now run from a dedicated `release.yml` workflow (test → GitHub release from the CHANGELOG → Packagist update → docs and changelog import on the docs site). The release job was removed from `ci.yml`.
+
+### Fixed
+
+- Cache warming issued self-HTTP requests with no timeout from inside the admin web request, which could hang the request or exhaust a small PHP-FPM pool (#102). `warmPageCache()` now bounds every request with `timeout` / `connect_timeout`.
+
 ## [1.1.0] - 2026-07-07
 
 Adds two AI-powered features owned by the performance package, plus the Livewire, React, and Vue trigger surfaces that drive them.

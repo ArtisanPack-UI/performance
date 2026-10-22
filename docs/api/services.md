@@ -69,7 +69,7 @@ The central service. Every method below is available directly on the `Performanc
 | `invalidatePageCache(string $pattern): int` | Wildcard page-cache invalidation |
 | `flushPageCache(): int` | Flush every page cache entry |
 | `invalidateFragmentsByTag(string $tag): int` | Fragment invalidation by tag |
-| `warmPageCache(array $urls): array` | Warm the given URLs |
+| `warmPageCache(array $urls): array` | Warm the given URLs synchronously (use `pageCache()->queueWarmPageCache()` from web requests) |
 | `getCachedPage(Request $request): ?array` | Read a cached page for a request |
 
 ### Monitoring
@@ -158,7 +158,9 @@ Backing pipeline for every image method above.
 |---|---|
 | `getCachedResponse(Request $request): ?array` | Read the cached payload for a request |
 | `cacheResponse(Request $request, Response $response): void` | Store a response |
-| `warmPageCache(array $urls): array` | Warm the given URLs |
+| `warmPageCache(array $urls, ?callable $onProgress = null): array` | Warm the given URLs synchronously; each request is bounded by `cache_warming.timeout` / `connect_timeout` |
+| `queueWarmPageCache(array $urls): bool` | Dispatch `WarmPageCacheJob` for the URLs; `false` when the warming connection is `sync` or `deferred` (since 1.2.0) |
+| `canQueueWarming(): bool` | Whether the warming connection runs jobs off-request (since 1.2.0) |
 | `invalidatePattern(string $pattern): int` | Invalidate entries by wildcard |
 | `flush(): int` | Flush every stored page |
 

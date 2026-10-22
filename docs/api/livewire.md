@@ -22,7 +22,7 @@ Include `@perfMetricsChartAssets` in the layout when mounting outside the dashbo
 
 ## `perf-cache-manager` — `CacheManager`
 
-Exposes the page and fragment cache controls — invalidate by key, invalidate by tag, flush both stores, and trigger cache warming — as a single dashboard surface. Destructive actions go through an inline confirmation step.
+Exposes the page and fragment cache controls — invalidate by key, invalidate by tag, flush both stores, and trigger cache warming — as a single dashboard surface. Destructive actions go through an inline confirmation step. Warming is queued as a `WarmPageCacheJob` (since 1.2.0), so it needs a queue worker on a non-`sync`, non-`deferred` connection; otherwise the component reports an error pointing to `php artisan perf:warm-cache`.
 
 ```blade
 <livewire:perf-cache-manager />

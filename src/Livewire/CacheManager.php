@@ -300,7 +300,7 @@ class CacheManager extends Component
     }
 
     /**
-     * Triggers cache warming for the URLs configured in `cache_warming.urls`.
+     * Queues cache warming for the URLs configured in `cache_warming.urls`.
      *
      * @since 1.0.0
      */
@@ -316,25 +316,24 @@ class CacheManager extends Component
         }
 
         try {
-            $results = app( PageCacheManager::class )->warmPageCache( $urls );
+            $queued = app( PageCacheManager::class )->queueWarmPageCache( $urls );
         } catch ( Throwable $e ) {
             $this->setStatus( __( 'Failed to warm cache: :message', [ 'message' => $e->getMessage() ] ), true );
 
             return;
         }
 
-        $succeeded = 0;
+        if ( ! $queued ) {
+            $this->setStatus( __( 'Cache warming needs a queue worker. Configure a non-sync queue connection or run `php artisan perf:warm-cache`.' ), true );
 
-        foreach ( $results as $entry ) {
-            if ( is_array( $entry ) && true === ( $entry['ok'] ?? false ) ) {
-                $succeeded++;
-            }
+            return;
         }
 
-        $this->setStatus( __( 'Warmed :count of :total URLs.', [
-            'count' => $succeeded,
-            'total' => count( $results ),
-        ] ) );
+        $this->setStatus( trans_choice(
+            'Queued cache warming for :count URL.|Queued cache warming for :count URLs.',
+            count( $urls ),
+            [ 'count' => count( $urls ) ],
+        ) );
     }
 
     /**
